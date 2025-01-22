@@ -1,15 +1,13 @@
 import re
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 from search import Search
 
 app = Flask(__name__)
 es = Search()
 
-
 @app.get('/')
 def index():
     return render_template('index.html')
-
 
 @app.post('/')
 def handle_search():
@@ -24,9 +22,17 @@ def handle_search():
         }
     )
     return render_template('index.html', results=results['hits']['hits'],
-                           query=query, from_=0,
-                           total=results['hits']['total']['value'])
+                         query=query, from_=0,
+                         total=results['hits']['total']['value'])
 
+@app.route('/autocomplete')
+def autocomplete():
+    query = request.args.get('term', '')
+    if not query:
+        return jsonify([])
+    
+    suggestions = es.get_suggestions(query)
+    return jsonify(suggestions)
 
 @app.get('/document/<id>')
 def get_document(id):

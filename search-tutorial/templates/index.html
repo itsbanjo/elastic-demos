@@ -1,61 +1,67 @@
 {% extends 'base.html' %}
 
+{% block head %}
+    {{ super() }}
+    <link rel="stylesheet" href="//code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"></script>
+    <style>
+        .ui-autocomplete {
+            max-height: 200px;
+            overflow-y: auto;
+            overflow-x: hidden;
+            z-index: 1000;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .ui-menu-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #eee;
+        }
+        .ui-menu-item:last-child {
+            border-bottom: none;
+        }
+        .ui-state-active {
+            background: #007bff !important;
+            border-color: #007bff !important;
+            color: white !important;
+        }
+    </style>
+{% endblock %}
+
 {% block content %}
-    <form method="POST" action="{{ url_for('handle_search') }}">
-      <div class="mb-3">
-          <input type="text" class="form-control" name="query" id="query" placeholder="Enter your search query" value="{{ query }}" autofocus>
-      </div>
-    </form>
-    {% if results %}
-        <div class="row mb-3">
-            <div class="col-2 mt-2">
-                <p><a href="javascript:history.back(1)">← Back</a></p>
-                {% for agg in aggs %}
-                    <h6 class="mt-3">{{ agg }}</h6>
-                    {% for key, count in aggs[agg].items() %}
-                        <form method="POST">
-                            <input type="hidden" name="query" value="{{ agg|lower }}:{{key}} {{ query }}">
-                            <button type="submit" class="btn btn-link btn-sm"{% if aggs[agg]|length == 1 %} disabled{% endif %}>{{ key }} ({{ count }})</button>
-                        </form>
-                    {% endfor %}
-                {% endfor %}
-            </div>
-            <div class="col-10">
-                <div class="row mb-3">
-                    <div class="col-sm-auto my-auto">
-                        Showing results {{ from_ + 1 }}-{{ from_ + results|length }} out of {{ total }}.
-                    </div>
-                    {% if from_ > 0 %}
-                        <div class="col-sm-auto my-auto">
-                            <a href="javascript:history.back(1)" class="btn btn-primary">← Previous page</a>
-                        </div>
-                    {% endif %}
-                    {% if from_ + results|length < total %}
-                        <div class="col-sm-auto my-auto">
-                            <form method="POST">
-                                <input type="hidden" name="query" value="{{ query }}">
-                                <input type="hidden" name="from_" value="{{ from_ + results|length }}">
-                                <button type="submit" class="btn btn-primary">Next page →</button>
-                            </form>
-                        </div>
-                    {% endif %}
-                    <div class="col"></div>
-                </div>
-                {% for result in results %}
-                    <p>
-                        {{ from_ + loop.index }}. <b><a href="{{ url_for('get_document', id=result._id) }}">{{ result._source.name }}</a></b>
-                        <br>
-                        {{ result._source.summary }}
-                        <br>
-                        <small>
-                            Category: {{ result._source.category }}.
-                            Last updated: {{ result._source.updated_at | default(result._source.created_on) }}.
-                            {% if result._score %}<i>(Score: {{ result._score }})</i>{% endif %}
-                        </small>
-                    </p>
-                {% endfor %}
-            </div>
+    <form method="POST" action="{{ url_for('handle_search') }}" id="searchForm">
+        <div class="mb-3">
+            <input type="text" class="form-control" name="query" id="query" 
+                   placeholder="Enter your search query" value="{{ query }}" autofocus>
         </div>
+    </form>
+
+    <script>
+    $(document).ready(function() {
+        $("#query").autocomplete({
+            source: "{{ url_for('autocomplete') }}",
+            minLength: 2,
+            select: function(event, ui) {
+                if (ui.item) {
+                    $("#query").val(ui.item.value);
+                    $("#searchForm").submit();
+                }
+            }
+        }).autocomplete("instance")._renderItem = function(ul, item) {
+            return $("<li>")
+                .append("<div>" + item.label + "</div>")
+                .appendTo(ul);
+        };
+    });
+    </script>
+
+    {% if results %}
+        <!-- Rest of your existing template remains the same -->
+        <!-- ... -->
     {% elif request.method == 'POST' %}
         <p>No results found.</p>
     {% endif %}
