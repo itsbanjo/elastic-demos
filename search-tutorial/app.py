@@ -24,7 +24,7 @@ def handle_search():
                 'must': {
                     'multi_match': {
                         'query': parsed_query,
-                        'fields': ['name', 'description'],
+                        'fields': ['name', 'description', 'sku'],
                     }
                 },
                 **filters
@@ -61,7 +61,6 @@ def get_document(doc_id):
     result = es.get(id=doc_id)    
     # Extract the necessary fields from the document's source
     source = result['_source']
-    print(source)
     name = source.get('name', 'No Name')
     color = source.get('color', 'No Color')
     description = source.get('description', 'No Description')
@@ -73,6 +72,7 @@ def get_document(doc_id):
     url = source.get('url', '#')
     links = source.get('links', [])
     variants = source.get('variants', [])
+    print(variants)
     # Pass the extracted fields to the template
     return render_template(
         'document.html',

@@ -1,62 +1,113 @@
 {% extends 'base.html' %}
-
 {% block content %}
+<div class="container py-4">
     <form method="POST" action="{{ url_for('handle_search') }}">
-      <div class="mb-3">
-          <input type="text" class="form-control" name="query" id="query" placeholder="Enter your search query" value="{{ query }}" autofocus>
-      </div>
-    </form>
-    {% if results %}
-        <div class="row mb-3">
-            <div class="col-2 mt-2">
-                <p><a href="javascript:history.back(1)">← Back</a></p>
-                {% for agg in aggs %}
-                    <h6 class="mt-3">{{ agg }}</h6>
-                    {% for key, count in aggs[agg].items() %}
-                        <form method="POST">
-                            <input type="hidden" name="query" value="{{ agg|lower }}:{{key}} {{ query }}">
-                            <button type="submit" class="btn btn-link btn-sm"{% if aggs[agg]|length == 1 %} disabled{% endif %}>{{ key }} ({{ count }})</button>
-                        </form>
-                    {% endfor %}
-                {% endfor %}
-            </div>
-            <div class="col-10">
-                <div class="row mb-3">
-                    <div class="col-sm-auto my-auto">
-                        Showing results {{ from_ + 1 }}-{{ from_ + results|length }} out of {{ total }}.
-                    </div>
-                    {% if from_ > 0 %}
-                        <div class="col-sm-auto my-auto">
-                            <a href="javascript:history.back(1)" class="btn btn-primary">← Previous page</a>
-                        </div>
-                    {% endif %}
-                    {% if from_ + results|length < total %}
-                        <div class="col-sm-auto my-auto">
-                            <form method="POST">
-                                <input type="hidden" name="query" value="{{ query }}">
-                                <input type="hidden" name="from_" value="{{ from_ + results|length }}">
-                                <button type="submit" class="btn btn-primary">Next page →</button>
-                            </form>
-                        </div>
-                    {% endif %}
-                    <div class="col"></div>
-                </div>
-                {% for result in results %}
-                    <p>
-                        {{ from_ + loop.index }}. <b><a href="{{ url_for('get_document', doc_id=result._id) }}">{{ result._source.name }}</a></b>
-                        <br>
-                        {{ result._source.summary }}
-                        <br>
-                        <small>
-                            Category: {{ result._source.category }}.
-                            Last updated: {{ result._source.updated_at | default(result._source.created_on) }}.
-                            {% if result._score %}<i>(Score: {{ result._score }})</i>{% endif %}
-                        </small>
-                    </p>
-                {% endfor %}
-            </div>
+        <div class="mb-4">
+            <input type="text" class="form-control form-control-lg rounded-pill border-0 shadow-sm" 
+                   name="query" id="query" placeholder="Enter your search query" 
+                   value="{{ query }}" autofocus>
         </div>
+    </form>
+
+    {% if results %}
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div class="text-secondary">Showing results {{ from_ + 1 }}-{{ from_ + results|length }} out of {{ total }}</div>
+        <div class="d-flex gap-2">
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Filters -->
+        <div class="col-md-3">
+            <a href="javascript:history.back(1)" class="text-decoration-none text-primary mb-4 d-inline-block">← Back</a>
+            {% for agg in aggs %}
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-header bg-light border-0">
+                        <h6 class="mb-0">{{ agg }}</h6>
+                    </div>
+                    <div class="card-body">
+                        {% for key, count in aggs[agg].items() %}
+                            <form method="POST" class="mb-2">
+                                <input type="hidden" name="query" value="{{ agg|lower }}:{{key}} {{ query }}">
+                                <button type="submit" class="btn btn-link text-start w-100 p-0 text-decoration-none"
+                                        {% if aggs[agg]|length == 1 %} disabled{% endif %}>
+                                    {{ key }} <span class="text-muted">({{ count }})</span>
+                                </button>
+                            </form>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <!-- Results -->
+        <div class="col-md-9">
+            {% for result in results %}
+                <div class="card border-0 shadow-sm mb-3 hover-shadow-md position-relative">
+                    <div class="card-body p-3">
+                        <div class="row g-0">
+                            <!-- Thumbnail -->
+                            <div class="col-auto">
+                                <div class="rounded-3 bg-light d-flex align-items-center justify-content-center" 
+                                     style="width: 100px; height: 100px;">
+                                    {% if result._source.image %}
+                                        <img src="https://www.spark.co.nz{{ result._source.image[0] }}" 
+                                             class="img-fluid rounded-3" 
+                                             alt="{{ result._source.name }}"
+                                             style="object-fit: cover; width: 100px; height: 100px;">
+                                    {% else %}
+                                        <i class="bi bi-image text-secondary" style="font-size: 2rem;"></i>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <!-- Content -->
+                            <div class="col ps-3">
+                                <div class="position-absolute top-0 end-0 mt-3 me-3">
+                                    <span class="text-muted"></span>
+                                </div>
+                                <h5 class="mb-2">
+                                    <a href="{{ url_for('get_document', doc_id=result._id) }}" 
+                                       class="text-decoration-none stretched-link">
+                                        {{ result._source.name }}
+                                    </a>
+                                </h5>
+                                <p class="text-secondary mb-2">{{ result._source.description }}</p>
+                                <div class="text-muted small d-flex gap-2">
+                                    <span>Category: {{ result._source.category }}</span>
+                                    <span>•</span>
+                                    <span>Updated: {{ result._source.updated_at | default(result._source.created_on) }}</span>
+                                    {% if result._score %}
+                                        <span>•</span>
+                                        <span>Score: {{ "%.2f"|format(result._score) }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="position-absolute top-50 end-0 translate-middle-y me-4">
+                            <div class="rounded-circle bg-light d-flex align-items-center justify-content-center"
+                                 style="width: 30px; height: 30px;">
+                                <span class="text-primary">›</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+
     {% elif request.method == 'POST' %}
-        <p>No results found.</p>
+        <div class="alert alert-info border-0 shadow-sm">No results found.</div>
     {% endif %}
+</div>
+
+<style>
+.hover-shadow-md {
+    transition: all 0.2s ease-in-out;
+}
+.hover-shadow-md:hover {
+    box-shadow: 0 .5rem 1rem rgba(0,0,0,.15)!important;
+    transform: translateY(-1px);
+}
+</style>
 {% endblock %}
