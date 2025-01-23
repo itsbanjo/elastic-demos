@@ -20,55 +20,34 @@ class Search:
     def search(self, **query_args):
         return self.es.search(index=self.search_index, **query_args)
 
-    def get_suggestions(self, query_text):
+# search.py
+
+    def get_suggestions(self, term):
         try:
-            # Search in the autocomplete index first
             suggest_query = {
                 'query': {
                     'prefix': {
-                        'name': query_text
+                        'name': term
                     }
                 },
                 'size': 10
             }
-            
+        
             response = self.es.search(
                 index=self.autocomplete_index,
                 body=suggest_query
             )
-            
+        
             suggestions = []
             for hit in response['hits']['hits']:
-                suggestions.append({
-                    'value': hit['_source']['name'],
-                    'label': hit['_source']['name']
-                })
-            
-            # If no suggestions found, try the main search index
-            if not suggestions:
-                search_query = {
-                    'query': {
-                        'match_phrase_prefix': {
-                            'name': {
-                                'query': query_text,
-                                'max_expansions': 10
-                            }
-                        }
-                    },
-                    'size': 10
-                }
-                
-                response = self.es.search(
-                    index=self.search_index,
-                    body=search_query
-                )
-                
-                for hit in response['hits']['hits']:
-                    suggestions.append({
-                        'value': hit['_source']['name'],
-                        'label': hit['_source']['name']
-                    })
-            
+                if 'suggestions' in hit['_source']:
+                    for suggestion in hit['_source']['suggestions']:
+                        if suggestion.lower().startswith(term.lower()):
+                            suggestions.append({
+                                'value': suggestion,
+                                'label': suggestion
+                            })
+        
             return suggestions
             
         except Exception as e:
