@@ -110,4 +110,53 @@
     transform: translateY(-1px);
 }
 </style>
+
+<script>
+const searchInput = document.getElementById('query');
+const suggestionsContainer = document.createElement('div');
+suggestionsContainer.className = 'suggestions border rounded shadow-sm position-absolute bg-white w-100 d-none';
+searchInput.parentElement.style.position = 'relative';
+searchInput.parentElement.appendChild(suggestionsContainer);
+
+let debounceTimer;
+searchInput.addEventListener('input', (e) => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+        const query = e.target.value.trim();
+        if (query.length < 2) {
+            suggestionsContainer.classList.add('d-none');
+            return;
+        }
+        
+        fetch(`/suggest?q=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(suggestions => {
+                suggestionsContainer.innerHTML = '';
+                if (suggestions.length === 0) {
+                    suggestionsContainer.classList.add('d-none');
+                    return;
+                }
+                
+                suggestions.forEach(suggestion => {
+                    const div = document.createElement('div');
+                    div.className = 'p-2 hover-bg-light cursor-pointer';
+                    div.textContent = suggestion.text;
+                    div.addEventListener('click', () => {
+                        searchInput.value = suggestion.text;
+                        suggestionsContainer.classList.add('d-none');
+                        searchInput.form.submit();
+                    });
+                    suggestionsContainer.appendChild(div);
+                });
+                suggestionsContainer.classList.remove('d-none');
+            });
+    }, 300);
+});
+
+document.addEventListener('click', (e) => {
+    if (!searchInput.contains(e.target) && !suggestionsContainer.contains(e.target)) {
+        suggestionsContainer.classList.add('d-none');
+    }
+});
+</script>
 {% endblock %}

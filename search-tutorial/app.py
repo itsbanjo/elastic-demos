@@ -1,5 +1,5 @@
 import re
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, jsonify
 from search import Search
 
 app = Flask(__name__)
@@ -11,6 +11,22 @@ if __name__ == "__main__":
 @app.get('/')
 def index():
     return render_template('index.html')
+
+@app.get('/suggest')
+def suggest():
+    query = request.args.get('q', '')
+    if not query:
+        return jsonify([])
+        
+    suggestions = es.suggest(query)
+    options = []
+    if 'suggest' in suggestions:
+        for suggestion in suggestions['suggest']['completion_suggestion'][0]['options']:
+            options.append({
+                'text': suggestion['text'],
+                'score': suggestion['_score']
+            })
+    return jsonify(options)
 
 @app.post('/')
 def handle_search():
@@ -86,4 +102,82 @@ def get_document(doc_id):
         url=url,
         links=links,
         variants=variants
+    )
+
+@app.route('/api/suggestions', methods=['GET'])
+def get_suggestions():
+    query = request.args.get('q', '')
+    if len(query) < 2:
+        return jsonify({
+            'suggestions': [],
+            'popular': [],
+            'categories': []
+        })
+
+    # Get completion suggestions
+    completion_results = es.search(
+        query={
+            'suggest': {
+                'completion_suggestion': {
+                    'prefix': query,
+                    'completion': {
+                        'field': 'name.completion',
+                        'size': 5,
+                        'fuzzy': {
+                            'fuzziness': 'AUTO'
+                        }
+                    }
+                }
+            }
+        }
+    )
+
+    # Get category suggestions
+    category_results = es.search(
+        query={
+            'size': 0,
+            'aggs': {
+                'categories': {
+                    'terms': {
+                        'field': 'category.keyword',
+                        'include': f'.*{query}.*'
+                    }
+                }
+            }
+        }
+    )
+
+    suggestions = []
+    if 'suggest' in completion_results:
+        for suggestion in completion_results['suggest']['completion_suggestion'][0].get('options', []):
+            suggestions.append(suggestion['text'])
+
+    categories = []
+    if 'aggregations' in category_results:
+        for bucket in category_results['aggregations']['categories']['buckets'][:3]:
+            categories.append(bucket['key'])
+
+    return jsonify({
+        'suggestions': suggestions,
+        'categories': categories,
+        'popular': []  # Implement based on your needs
+    })
+
+@app.route('/api/correct', methods=['GET'])
+def get_correction():
+    query = request.args.get('q', '')
+    
+    correction_results = es.search(
+        query={
+            'suggest': {
+                'term_suggestion': {
+                    'text': query,
+                    'term': {
+                        'field': 'name',
+                        'suggest_mode': 'popular',
+                        'max_edits': 2
+                    }
+                }
+            }
+        }
     )
