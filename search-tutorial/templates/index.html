@@ -43,7 +43,7 @@
                 </div>
                 {% for result in results %}
                     <p>
-                        {{ from_ + loop.index }}. <b><a href="{{ url_for('get_document', id=result._id) }}">{{ result._source.name }}</a></b>
+                        {{ from_ + loop.index }}. <b><a href="{{ url_for('get_document', doc_id=result._id) }}">{{ result._source.name }}</a></b>
                         <br>
                         {{ result._source.summary }}
                         <br>
