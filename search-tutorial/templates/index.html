@@ -13,6 +13,20 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div class="text-secondary">Showing results {{ from_ + 1 }}-{{ from_ + results|length }} out of {{ total }}</div>
         <div class="d-flex gap-2">
+            {% if from_ > 0 %}
+                <form method="POST">
+                    <input type="hidden" name="query" value="{{ query }}">
+                    <input type="hidden" name="from_" value="{{ from_ - 5 }}">
+                    <button type="submit" class="btn btn-outline-primary">← Previous</button>
+                </form>
+            {% endif %}
+            {% if from_ + results|length < total %}
+                <form method="POST">
+                    <input type="hidden" name="query" value="{{ query }}">
+                    <input type="hidden" name="from_" value="{{ from_ + 5 }}">
+                    <button type="submit" class="btn btn-outline-primary">Next →</button>
+                </form>
+            {% endif %}
         </div>
     </div>
 
@@ -95,6 +109,7 @@
             {% endfor %}
         </div>
     </div>
+    
 
     {% elif request.method == 'POST' %}
         <div class="alert alert-info border-0 shadow-sm">No results found.</div>
@@ -158,5 +173,69 @@ document.addEventListener('click', (e) => {
         suggestionsContainer.classList.add('d-none');
     }
 });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@elastic/behavioral-analytics-browser-tracker@2"></script>
+<script type="text/javascript">
+    window.elasticAnalytics.createTracker({
+      endpoint: "https://038627544e264087a75829b9465cd3cd.australia-southeast1.gcp.elastic-cloud.com:443",
+      collectionName: "spark",
+      apiKey: "Y216cmtwUUJYaHV1YS11TXJRdm46UWpPUTFYSnRSTWlsb3dETEtWeENHZw==",
+      // Optional: sampling rate percentage: 0-1, 0 = no events, 1 = all events
+      // sampling: 1,
+    });
+    </script>
+
+<script>
+function trackSearchEvent(query, results, from) {
+    const searchEvent = {
+        search: {
+            query: query,
+            page: {
+                current: Math.floor(from / 5) + 1,
+                size: 5
+            },
+            results: {
+                items: results.map(result => ({
+                    document: {
+                        id: result._id,
+                        index: 'search-dev-spark-product-index'
+                    },
+                    page: {
+                        url: `/document/${result._id}`
+                    }
+                })),
+                total_results: {{ total | default(0) }}
+            },
+            sort: {
+                name: "relevance"
+            },
+            search_application: "spark-search"
+        }
+    };
+    
+    window.elasticAnalytics.trackSearch(searchEvent);
+}
+
+// Track result clicks
+document.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('click', function(e) {
+        const docId = this.querySelector('a').getAttribute('href').split('/').pop();
+        window.elasticAnalytics.trackSearchClick({
+            document: {
+                id: docId,
+                index: 'search-dev-spark-product-index'
+            },
+            click: {
+                position: Array.from(this.parentElement.children).indexOf(this)
+            }
+        });
+    });
+});
+
+// Track initial search if results exist
+{% if results %}
+trackSearchEvent("{{ query }}", {{ results|tojson }}, {{ from_ }});
+{% endif %}
 </script>
 {% endblock %}
