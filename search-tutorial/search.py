@@ -21,6 +21,29 @@ class Search:
     def get(self, **query_args):
         return self.es.get(index=self.product_index, **query_args)
     
+    def suggest_spelling(self, text):
+        spell_query = {
+            "suggest": {
+                "text": text,
+                "simple_phrase": {
+                    "phrase": {
+                        "field": "name.trigram",
+                        "size": 1,
+                        "gram_size": 3,
+                        "direct_generator": [{
+                            "field": "name.trigram",
+                            "suggest_mode": "always"
+                        }],
+                        "highlight": {
+                            "pre_tag": "<em>",
+                            "post_tag": "</em>"
+                        }
+                    }
+                }
+            }
+        }
+        return self.es.search(index=self.product_index, body=spell_query)    
+    
     def suggest(self, text):
         suggestion_query = {
             "suggest": {

@@ -112,7 +112,31 @@
     
 
     {% elif request.method == 'POST' %}
-        <div class="alert alert-info border-0 shadow-sm">No results found.</div>
+        <div class="alert alert-info border-0 shadow-sm">
+         No results found.
+        {% if suggestion %}
+            <p>Did you mean: <a href="#" onclick="document.getElementById('query').value='{{ suggestion }}'; document.forms[0].submit(); return false;">{{ suggestion }}</a>?</p>
+        {% endif %}
+        </div>
+        <script>
+            window.elasticAnalytics.trackSearch({
+                search: {
+                    query: "{{ query  }}",
+                    page: {
+                        current: 1,
+                        size: 5
+                    },
+                    results: {
+                        items: [],
+                        total_results: 0
+                    },
+                    sort: {
+                        name: "relevance"
+                    },
+                    search_application: "spark-search"
+                }
+            });
+        </script>
     {% endif %}
 </div>
 
@@ -175,7 +199,6 @@ document.addEventListener('click', (e) => {
 });
 </script>
 
-<script src="https://cdn.jsdelivr.net/npm/@elastic/behavioral-analytics-browser-tracker@2"></script>
 <script type="text/javascript">
     window.elasticAnalytics.createTracker({
       endpoint: "https://038627544e264087a75829b9465cd3cd.australia-southeast1.gcp.elastic-cloud.com:443",
@@ -183,6 +206,9 @@ document.addEventListener('click', (e) => {
       apiKey: "Y216cmtwUUJYaHV1YS11TXJRdm46UWpPUTFYSnRSTWlsb3dETEtWeENHZw==",
       // Optional: sampling rate percentage: 0-1, 0 = no events, 1 = all events
       // sampling: 1,
+      user: {
+        token: () => "1337"
+    }
     });
     </script>
 
@@ -218,24 +244,30 @@ function trackSearchEvent(query, results, from) {
 }
 
 // Track result clicks
-document.querySelectorAll('.card').forEach(card => {
-    card.addEventListener('click', function(e) {
-        const docId = this.querySelector('a').getAttribute('href').split('/').pop();
+document.querySelectorAll('.card').forEach((card, index) => {
+    card.addEventListener('click', function() {
+        const docId = this.querySelector('a').href.split('/').pop();
         window.elasticAnalytics.trackSearchClick({
             document: {
                 id: docId,
                 index: 'search-dev-spark-product-index'
             },
+            search: {
+                query: "{{ query  }}",
+                filters: {{ filters|tojson if filters else '[]' }},
+                page: {
+                    current: Math.floor({{ from_ }} / 5) + 1,
+                    size: 5
+                },
+                results: {
+                    total_results: {{ total }}
+                }
+            },
             click: {
-                position: Array.from(this.parentElement.children).indexOf(this)
+                position: index + {{ from_ }} + 1
             }
         });
     });
 });
-
-// Track initial search if results exist
-{% if results %}
-trackSearchEvent("{{ query }}", {{ results|tojson }}, {{ from_ }});
-{% endif %}
 </script>
 {% endblock %}

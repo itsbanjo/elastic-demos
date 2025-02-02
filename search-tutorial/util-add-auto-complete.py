@@ -5,7 +5,7 @@ es = Search()
 # Get some products from the main index
 results = es.search(
     query={"match_all": {}},
-    size=100
+    size=1000
 )
 
 # Add them to autocomplete index

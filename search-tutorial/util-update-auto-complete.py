@@ -2,7 +2,8 @@ from search import Search
 
 es = Search()
 
-mapping = {
+# Update product index mapping
+product_mapping = {
     "settings": {
         "analysis": {
             "analyzer": {
@@ -23,13 +24,6 @@ mapping = {
     },
     "mappings": {
         "properties": {
-            "suggest": {
-                "type": "completion",
-                "analyzer": "simple",
-                "preserve_separators": True,
-                "preserve_position_increments": True,
-                "max_input_length": 50
-            },
             "name": {
                 "type": "text",
                 "fields": {
@@ -38,11 +32,11 @@ mapping = {
                         "analyzer": "trigram"
                     }
                 }
-            },
-            "description": {"type": "text"}
+            }
         }
     }
 }
 
-# Create index
-es.es.indices.create(index="search-dev-spark-product-autocomplete", body=mapping)
+# Delete and recreate product index
+es.es.indices.delete(index=es.product_index)
+es.es.indices.create(index=es.product_index, body=product_mapping)

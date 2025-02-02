@@ -40,7 +40,7 @@ def handle_search():
                 'must': {
                     'multi_match': {
                         'query': parsed_query,
-                        'fields': ['name', 'description', 'sku'],
+                        'fields': ['name', 'description', 'sku']
                     }
                 },
                 **filters
@@ -49,9 +49,17 @@ def handle_search():
         size=5,
         from_=from_
     )
+    suggestion = None
+
+    if results['hits']['total']['value'] == 0:
+        spell_results = es.suggest_spelling(parsed_query)
+        if spell_results.get('suggest') and spell_results['suggest']['simple_phrase'][0]['options']:
+            suggestion = spell_results['suggest']['simple_phrase'][0]['options'][0]['text']
+
     return render_template('index.html', results=results['hits']['hits'],
                            query=query, from_=from_,
-                           total=results['hits']['total']['value'])
+                           total=results['hits']['total']['value'],
+                           suggestion=suggestion)
 
 def extract_filters(query):
     filters = []
