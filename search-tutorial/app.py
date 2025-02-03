@@ -1,8 +1,21 @@
+import os
 import re
+from elasticapm.contrib.flask import ElasticAPM
 from flask import Flask, render_template, request, jsonify
 from search import Search
 
 app = Flask(__name__)
+
+app.config['ELASTIC_APM'] = {
+    'SERVICE_NAME': os.getenv('ELASTIC_APM_SERVICE_NAME', 'spark-search'),
+    'SECRET_TOKEN': os.getenv('ELASTIC_APM_SECRET_TOKEN'),
+    'SERVER_URL': os.getenv('ELASTIC_APM_SERVER_URL'),
+    'ENVIRONMENT': os.getenv('ELASTIC_APM_ENVIRONMENT', 'development'),
+    'METRICS_INTERVAL': '30s'
+}
+
+apm = ElasticAPM(app)
+
 es = Search()
 
 if __name__ == "__main__":
@@ -96,7 +109,6 @@ def get_document(doc_id):
     url = source.get('url', '#')
     links = source.get('links', [])
     variants = source.get('variants', [])
-    print(variants)
     # Pass the extracted fields to the template
     return render_template(
         'document.html',

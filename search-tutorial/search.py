@@ -1,10 +1,9 @@
-import json
-from pprint import pprint
 import os
 import time
-
 from dotenv import load_dotenv
 from elasticsearch import Elasticsearch
+import elasticapm
+from metrics import SearchMetrics
 
 load_dotenv()
 
@@ -15,12 +14,46 @@ class Search:
         self.product_index = 'search-dev-spark-product-index'
         self.autocomplete_index = 'search-dev-spark-product-autocomplete'
         
+        # Get the existing APM client instead of creating a new one
+        self.client = elasticapm.get_client()
+        if self.client:
+            self.metrics = self.client.metrics.register(SearchMetrics)
+
     def search(self, **query_args):
-        return self.es.search(index=self.product_index, **query_args)
-    
+        start_time = time.time()
+        results = self.es.search(index=self.product_index, **query_args)
+        duration_ms = (time.time() - start_time) * 1000
+        
+        if hasattr(self, 'metrics'):
+            self.metrics.record_search(
+                duration_ms=duration_ms,
+                hits_count=results['hits']['total']['value']
+            )
+        return results
+
+    def suggest(self, text):
+        if hasattr(self, 'metrics'):
+            self.metrics.record_suggestion_request()
+        suggestion_query = {
+            "suggest": {
+                "completion_suggestion": {
+                    "prefix": text,
+                    "completion": {
+                        "field": "suggest",
+                        "size": 5,
+                        "skip_duplicates": True,
+                        "fuzzy": {
+                            "fuzziness": "AUTO"
+                        }
+                    }
+                }
+            }
+        }
+        return self.es.search(index=self.autocomplete_index, body=suggestion_query)
+
     def get(self, **query_args):
         return self.es.get(index=self.product_index, **query_args)
-    
+
     def suggest_spelling(self, text):
         spell_query = {
             "suggest": {
@@ -42,25 +75,4 @@ class Search:
                 }
             }
         }
-        return self.es.search(index=self.product_index, body=spell_query)    
-    
-    def suggest(self, text):
-        suggestion_query = {
-            "suggest": {
-                "completion_suggestion": {
-                    "prefix": text,
-                    "completion": {
-                        "field": "suggest",
-                        "size": 5,
-                        "skip_duplicates": True,
-                        "fuzzy": {
-                            "fuzziness": "AUTO"
-                        }
-                    }
-                }
-            }
-        }
-        return self.es.search(index=self.autocomplete_index, body=suggestion_query)
-    
-    def add_suggestion(self, doc):
-        return self.es.index(index=self.autocomplete_index, document=doc)
+        return self.es.search(index=self.product_index, body=spell_query)
