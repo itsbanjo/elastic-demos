@@ -3,6 +3,7 @@ import re
 from elasticapm.contrib.flask import ElasticAPM
 from flask import Flask, render_template, request, jsonify
 from search import Search
+import elasticapm
 
 app = Flask(__name__)
 
@@ -22,10 +23,12 @@ if __name__ == "__main__":
     app.run(debug=True)
 
 @app.get('/')
+
 def index():
     return render_template('index.html')
 
 @app.get('/suggest')
+@elasticapm.capture_span()
 def suggest():
     query = request.args.get('q', '')
     if not query:
@@ -42,6 +45,7 @@ def suggest():
     return jsonify(options)
 
 @app.post('/')
+@elasticapm.capture_span()
 def handle_search():
     query = request.form.get('query', '')
     filters, parsed_query = extract_filters(query)
@@ -93,6 +97,7 @@ def extract_filters(query):
 
 
 @app.get('/document/<doc_id>')
+@elasticapm.capture_span()
 def get_document(doc_id):
     # Retrieve the document from Elasticsearch
     result = es.get(id=doc_id)    
@@ -125,6 +130,7 @@ def get_document(doc_id):
     )
 
 @app.route('/api/suggestions', methods=['GET'])
+@elasticapm.capture_span()
 def get_suggestions():
     query = request.args.get('q', '')
     if len(query) < 2:
@@ -184,6 +190,7 @@ def get_suggestions():
     })
 
 @app.route('/api/correct', methods=['GET'])
+@elasticapm.capture_span()
 def get_correction():
     query = request.args.get('q', '')
     
