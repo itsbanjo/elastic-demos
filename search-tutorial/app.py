@@ -53,18 +53,26 @@ def handle_search():
 
     results = es.search(
         query={
-            'bool': {
-                'must': {
-                    'multi_match': {
-                        'query': parsed_query,
-                        'fields': ['name', 'description', 'sku']
+          'bool': {
+            'should': [
+                {
+                    'term': {
+                        'sku': {
+                            'value': 'apple128917spo',
+                            'boost': 100.0
+                        }
                     }
                 },
-                **filters
-            }
-        },
-        size=5,
-        from_=from_
+                {
+                    'multi_match': {
+                        'query': parsed_query,
+                        'fields': ['name', 'description', 'sku^4']
+                    }
+                }
+               ],
+               'minimum_should_match': 1
+           }
+       }
     )
     suggestion = None
 
