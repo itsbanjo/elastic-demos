@@ -52,28 +52,39 @@ def handle_search():
     from_ = request.form.get('from_', type=int, default=0)
 
     results = es.search(
+        from_=from_,
+        size=10,
+        _source=[
+            'name',
+            'description',
+            'category',
+            'image',
+            'updated_at',
+            'created_on',
+            'sku',
+            'id'
+        ],
         query={
-          'bool': {
-            'should': [
-                {
-                    'term': {
-                        'sku': {
-                            'value': 'apple128917spo',
-                            'boost': 100.0
-                        }
-                    }
-                },
-                {
-                    'multi_match': {
-                        'query': parsed_query,
-                        'fields': ['name', 'description', 'sku^4']
+            'pinned': {
+                'ids': ['1', '2'], #6790ac816a74f82c446adb5a 679080736a74f8929f6a5678
+                'organic': {
+                    'bool': {
+                        'should': [
+                            {
+                                'multi_match': {
+                                    'query': parsed_query,
+                                    'fields': ['name^3', 'description', 'sku^4']
+                                }
+                            }
+                        ],
+                        'minimum_should_match': 1
                     }
                 }
-               ],
-               'minimum_should_match': 1
-           }
-       }
+            }
+        }
     )
+
+    print(results)
     suggestion = None
 
     if results['hits']['total']['value'] == 0:
@@ -122,6 +133,9 @@ def get_document(doc_id):
     url = source.get('url', '#')
     links = source.get('links', [])
     variants = source.get('variants', [])
+    sku = source.get('sku', 'N/A') 
+    id = source.get('id', 'N/A')
+
     # Pass the extracted fields to the template
     return render_template(
         'document.html',
@@ -134,7 +148,9 @@ def get_document(doc_id):
         image=image,
         url=url,
         links=links,
-        variants=variants
+        variants=variants,
+        sku=sku,
+        id=id
     )
 
 @app.route('/api/suggestions', methods=['GET'])
@@ -216,3 +232,48 @@ def get_correction():
             }
         }
     )
+    
+@app.delete('/products/<sku>')
+@elasticapm.capture_span()
+def delete_by_sku(sku):
+    try:
+        # First search to verify
+        search_result = es.search(
+            index=es.product_index,
+            query={
+                "term": {
+                    "sku.keyword": {
+                        "value": sku
+                    }
+                }
+            }
+        )
+        
+        count = search_result['hits']['total']['value']
+        
+        if count == 0:
+            return jsonify({
+                'error': 'No documents found with the specified SKU'
+            }), 404
+            
+        # Proceed with deletion
+        delete_result = es.delete_by_query(
+            index=es.product_index,
+            query={
+                "term": {
+                    "sku.keyword": {
+                        "value": sku
+                    }
+                }
+            }
+        )
+        
+        return jsonify({
+            'message': f'Successfully deleted {delete_result["deleted"]} documents',
+            'deleted': delete_result['deleted']
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'error': str(e)
+        }), 500
