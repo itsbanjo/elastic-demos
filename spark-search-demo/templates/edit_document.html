@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-5">
+    <div class="mb-4">
+        <a href="{{ url_for('get_document', doc_id=doc_id) }}" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-arrow-left me-1"></i> Back to document
+        </a>
+    </div>
+    
+    <div class="card border-0 p-0 mb-5">
+        <div class="card-body p-4 p-md-5">
+            <h1 class="display-6 fw-bold mb-4">Edit Description</h1>
+            <p class="text-muted mb-4">You are editing the description for: <strong>{{ name }}</strong></p>
+            
+            {% if error %}
+            <div class="alert alert-danger mb-4">
+                <i class="bi bi-exclamation-triangle me-2"></i> {{ error }}
+            </div>
+            {% endif %}
+            
+            <form method="POST" action="{{ url_for('update_document', doc_id=doc_id) }}">
+                <div class="mb-4">
+                    <label for="description" class="form-label">Description</label>
+                    <textarea 
+                        class="form-control" 
+                        id="description" 
+                        name="description" 
+                        rows="6"
+                        required
+                    >{{ description }}</textarea>
+                    <div class="form-text">Update the product description only. All other fields will remain unchanged.</div>
+                </div>
+                
+                <div class="d-flex justify-content-between align-items-center">
+                    <a href="{{ url_for('get_document', doc_id=doc_id) }}" class="btn btn-outline-secondary">
+                        Cancel
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-check-lg me-1"></i> Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Track edit page view
+    window.elasticAnalytics?.trackEvent({
+        event: {
+            name: 'product_edit_started',
+            data: {
+                product_id: '{{ doc_id }}'
+            }
+        }
+    });
+    
+    // Form submission tracking
+    const form = document.querySelector('form');
+    form.addEventListener('submit', function() {
+        window.elasticAnalytics?.trackEvent({
+            event: {
+                name: 'product_description_updated',
+                data: {
+                    product_id: '{{ doc_id }}'
+                }
+            }
+        });
+    });
+    
+    // Auto-resize textarea
+    const textarea = document.getElementById('description');
+    textarea.style.height = 'auto';
+    textarea.style.height = (textarea.scrollHeight) + 'px';
+    
+    textarea.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+    });
+});
+</script>
+{% endblock %}

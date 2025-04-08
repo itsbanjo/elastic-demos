@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Elasticsearch Demo</title>
+  <!-- Modern font with variable weights -->
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Updated icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+  <!-- Analytics script -->
+  <script src="https://cdn.jsdelivr.net/npm/@elastic/behavioral-analytics-browser-tracker@2"></script>
+  <!-- Modern CSS framework -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+  
+  <style>
+    :root {
+      --bs-primary: #5046e5;
+      --bs-primary-rgb: 80, 70, 229;
+      --bs-secondary: #f8fafc;
+      --bs-secondary-rgb: 248, 250, 252;
+      --bs-border-radius: 12px;
+      --transition-base: all 0.2s ease-in-out;
+    }
+    
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #fafafa;
+      color: #0f172a;
+    }
+    
+    .navbar {
+      backdrop-filter: blur(10px);
+      background-color: rgba(255, 255, 255, 0.8) !important;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+      padding: 1rem 0;
+    }
+    
+    .navbar-brand {
+      font-weight: 600;
+      color: var(--bs-primary);
+    }
+    
+    .card {
+      border-radius: var(--bs-border-radius);
+      border: none;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      transition: var(--transition-base);
+    }
+    
+    .card:hover {
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+      transform: translateY(-2px);
+    }
+    
+    .btn {
+      border-radius: 10px;
+      padding: 0.5rem 1.25rem;
+      font-weight: 500;
+      transition: var(--transition-base);
+    }
+    
+    .btn-primary {
+      background-color: var(--bs-primary);
+      border-color: var(--bs-primary);
+    }
+    
+    .btn-primary:hover {
+      background-color: #4338ca;
+      border-color: #4338ca;
+      transform: translateY(-2px);
+    }
+    
+    .btn-outline-primary {
+      color: var(--bs-primary);
+      border-color: var(--bs-primary);
+    }
+    
+    .btn-outline-primary:hover {
+      background-color: var(--bs-primary);
+      border-color: var(--bs-primary);
+      transform: translateY(-2px);
+    }
+    
+    .form-control {
+      border-radius: var(--bs-border-radius);
+      padding: 0.75rem 1.25rem;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      background-color: white;
+      transition: var(--transition-base);
+    }
+    
+    .form-control:focus {
+      border-color: var(--bs-primary);
+      box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
+    }
+
+    .glassmorphism {
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+    
+    .text-primary {
+      color: var(--bs-primary) !important;
+    }
+    
+    .badge {
+      border-radius: 6px;
+      padding: 0.35em 0.65em;
+      font-weight: 500;
+    }
+    
+    /* Modern scroll styling */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: #a1a1a1;
+    }
+    
+    /* Animation classes */
+    .fade-in {
+      animation: fadeIn 0.5s ease-in-out;
+    }
+    
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .container {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+     <div class="container">
+    <nav class="navbar sticky-top mb-3">
+      <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center" href="/">
+          <div class="d-flex align-items-center">
+            <img src="{{ url_for('static', filename='spark-logo.svg') }}" alt="Customer" width="100" height="100" class="d-inline-block mx-2" style="border-radius: 4px;">
+            <img src="{{ url_for('static', filename='elastic-logo.svg') }}" alt="Elastic" width="32" height="32" class="d-inline-block me-2">
+            <span>Elasticsearch Demo</span>
+          </div>
+        </a>
+        
+        <div class="d-flex align-items-center gap-3">
+          <a href="#" class="text-decoration-none text-dark">
+            <i class="bi bi-info-circle"></i>
+          </a>
+          <a href="#" class="text-decoration-none text-dark">
+            <i class="bi bi-gear"></i>
+          </a>
+        </div>
+      </div>
+    </nav> 
+    <main class="fade-in">
+      {% block content %}{% endblock %}
+    </main>
+    
+    <footer class="py-4 mt-5 text-center text-muted">
+      <small>© 2025 Elasticsearch Demo</small>
+    </footer>
+  </div>
+  
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+</body>
+</html>

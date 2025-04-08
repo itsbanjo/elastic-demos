@@ -1,0 +1,360 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container py-5">
+    <div class="mb-4">
+        <a href="javascript:history.back()" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-arrow-left me-1"></i> Back to results
+        </a>
+    </div>
+    
+    <div class="card border-0 p-0 mb-5">
+        <div class="card-body p-0">
+            <div class="row g-0">
+                <!-- Product Image -->
+                <div class="col-lg-6 p-4 p-md-5 d-flex align-items-center justify-content-center bg-white rounded-start">
+                    {% if image %}
+                        <img src="{{ image[0] }}" 
+                             class="img-fluid rounded" 
+                             alt="{{ name }}"
+                             style="max-height: 400px; object-fit: contain;">
+                    {% else %}
+                        <div class="text-center p-5">
+                            <i class="bi bi-image text-secondary" style="font-size: 8rem;"></i>
+                            <p class="text-muted mt-3">No image available</p>
+                        </div>
+                    {% endif %}
+                </div>
+                
+                <!-- Product Details -->
+                <div class="col-lg-6 p-4 p-md-5">
+                    <div class="d-flex flex-column h-100">
+                        <div>
+                            <div class="d-flex align-items-center mb-3">
+                                {% if color %}
+                                <span class="badge bg-dark bg-opacity-10 text-dark me-2">{{ color }}</span>
+                                {% endif %}
+                                <span class="badge bg-success bg-opacity-10 text-success">${{ price }}</span>
+                            </div>
+                            
+                            <h1 class="display-6 fw-bold mb-3">{{ name }}</h1>
+                            
+                            <div class="mb-4">
+                                <p class="text-dark">{{ description }}</p>
+                            </div>
+                            
+                            <div class="card bg-secondary bg-opacity-10 border-0 p-3 mb-4">
+                                <div class="row g-2">
+                                    {% if capacity %}
+                                    <div class="col-sm-6">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-hdd me-2 text-primary"></i>
+                                            <div>
+                                                <small class="text-muted d-block">Capacity</small>
+                                                <span>{{ capacity }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                    
+                                    {% if sku %}
+                                    <div class="col-sm-6">
+                                        <div class="d-flex align-items-center">
+                                            <i class="bi bi-upc me-2 text-primary"></i>
+                                            <div>
+                                                <small class="text-muted d-block">SKU</small>
+                                                <span>{{ sku }}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-auto pt-4">
+                            <div class="d-grid gap-2 d-md-flex">
+                                <button class="btn btn-primary flex-grow-1">
+                                    <i class="bi bi-cart-plus me-2"></i> Add to cart
+                                </button>
+                                <button class="btn btn-outline-primary">
+                                    <i class="bi bi-heart"></i>
+                                </button>
+                                <button class="btn btn-outline-primary">
+                                    <i class="bi bi-share"></i>
+                                </button>
+                                <a href="{{ url_for('edit_document', doc_id=id) }}" class="btn btn-outline-secondary">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                            </div>
+                            
+                            <div class="mt-3 text-muted d-flex justify-content-between align-items-center">
+                                <small>Last updated: {{ last_crawled_at }}</small>
+                                <small>ID: {{ id }}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% if variants and variants|length > 0 %}
+    <div class="mt-5 position-relative">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h3 class="m-0">Available Variants</h3>
+            <div class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-primary rounded-circle prev-btn" style="width: 36px; height: 36px;">
+                    <i class="bi bi-chevron-left"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-primary rounded-circle next-btn" style="width: 36px; height: 36px;">
+                    <i class="bi bi-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+        
+        <div class="variants-container overflow-hidden position-relative">
+            <div class="variants-wrapper d-flex" style="gap: 1rem; transition: transform 0.3s ease;">
+                {% for variant in variants %}
+                <div class="variant-card" style="min-width: 280px; flex: 0 0 280px;">
+                    <div class="card h-100 border-0">
+                        <div class="card-header bg-white border-0 text-center p-4">
+                            {% if variant.image %}
+                            <img src="{{ 'https://www.spark.co.nz' + variant.image[0] }}" 
+                                 class="img-fluid" 
+                                 alt="{{ variant.name }}"
+                                 style="height: 180px; object-fit: contain;">
+                            {% else %}
+                            <div class="d-flex align-items-center justify-content-center" style="height: 180px;">
+                                <i class="bi bi-image text-dark" style="font-size: 4rem;"></i>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex flex-column h-100">
+                                <h5 class="card-title">{{ variant.name }}</h5>
+                                {% if variant.color %}
+                                <div class="mb-2">
+                                    <span class="badge bg-secondary bg-opacity-80 text-dark">{{ variant.color }}</span>
+                                </div>
+                                {% endif %}
+                                <div class="mt-auto">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <p class="card-text mb-0 fw-bold">${{ variant.price }}</p>
+                                        {% if variant.capacity %}
+                                        <span class="badge bg-secondary bg-opacity-80 text-primary">{{ variant.capacity }}</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-footer bg-white border-0 p-3">
+                            {% if variant.doc_id %}
+                            <a href="{{ url_for('get_document', doc_id=variant.doc_id) }}" class="btn btn-sm btn-primary w-100">View details</a>
+                            {% else %}
+                            <button class="btn btn-sm btn-primary w-100 disabled" title="Variant details unavailable">View details</button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    {% if variant.doc_id %}
+                    <!-- Make the entire card clickable with an overlay link -->
+                    <a href="{{ url_for('get_document', doc_id=variant.doc_id) }}" class="stretched-link"></a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+    /* Variant cards styling */
+    .variant-card {
+        transition: all 0.25s ease;
+    }
+    .variant-card:hover {
+        transform: translateY(-5px);
+    }
+    
+    /* Product image zoom effect */
+    .col-lg-6 img {
+        transition: transform 0.5s ease;
+    }
+    .col-lg-6:hover img {
+        transform: scale(1.05);
+    }
+    
+    /* Modernized buttons */
+    .btn-outline-primary.rounded-circle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+    }
+    
+    /* Custom scrollbar for variants */
+    .variants-container::-webkit-scrollbar {
+        height: 6px;
+    }
+    .variants-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+    .variants-container::-webkit-scrollbar-thumb {
+        background: #c1c1c1;
+        border-radius: 10px;
+    }
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Get the variant elements
+    const variantsWrapper = document.querySelector('.variants-wrapper');
+    const prevBtn = document.querySelector('.prev-btn');
+    const nextBtn = document.querySelector('.next-btn');
+    const variantCards = document.querySelectorAll('.variant-card');
+    
+    // Exit early if variant section doesn't exist or has no cards
+    if (!variantsWrapper || !prevBtn || !nextBtn || variantCards.length === 0) return;
+    
+    let currentPosition = 0;
+    const cardWidth = 296; // 280px card width + 16px gap
+    const visibleCards = Math.floor(variantsWrapper.parentElement.offsetWidth / cardWidth);
+    const maxPosition = Math.max(0, variantCards.length - visibleCards);
+    
+    // Initialize button states
+    updateButtonStates();
+    
+    prevBtn.addEventListener('click', (e) => {
+        e.preventDefault(); // Prevent event bubbling to the stretched-link
+        if (currentPosition > 0) {
+            currentPosition--;
+            updateSliderPosition();
+        }
+    });
+    
+    nextBtn.addEventListener('click', (e) => {
+        e.preventDefault(); // Prevent event bubbling to the stretched-link
+        if (currentPosition < maxPosition) {
+            currentPosition++;
+            updateSliderPosition();
+        }
+    });
+    
+    function updateSliderPosition() {
+        variantsWrapper.style.transform = `translateX(-${currentPosition * cardWidth}px)`;
+        updateButtonStates();
+    }
+    
+    function updateButtonStates() {
+        prevBtn.disabled = currentPosition === 0;
+        nextBtn.disabled = currentPosition >= maxPosition;
+        
+        // Update button appearance
+        prevBtn.classList.toggle('opacity-50', currentPosition === 0);
+        nextBtn.classList.toggle('opacity-50', currentPosition >= maxPosition);
+    }
+    
+    // Handle window resize
+    window.addEventListener('resize', () => {
+        const newVisibleCards = Math.floor(variantsWrapper.parentElement.offsetWidth / cardWidth);
+        const newMaxPosition = Math.max(0, variantCards.length - newVisibleCards);
+        
+        // Adjust current position if needed
+        if (currentPosition > newMaxPosition) {
+            currentPosition = Math.max(0, newMaxPosition);
+            updateSliderPosition();
+        }
+        
+        updateButtonStates();
+    });
+    
+    // Track variant clicks for analytics
+    variantCards.forEach(card => {
+        const cardLink = card.querySelector('a.stretched-link');
+        if (cardLink) {
+            card.addEventListener('click', function(e) {
+                // Skip if clicking on navigation buttons
+                if (e.target.closest('.prev-btn') || e.target.closest('.next-btn')) {
+                    return;
+                }
+                
+                // Track the variant click
+                const variantName = this.querySelector('.card-title').textContent;
+                window.elasticAnalytics?.trackEvent({
+                    event: {
+                        name: 'variant_clicked',
+                        data: {
+                            product_id: '{{ id }}',
+                            product_name: '{{ name }}',
+                            variant_name: variantName
+                        }
+                    }
+                });
+            });
+        }
+    });
+});
+
+// Add to cart animation
+document.querySelector('.btn-primary')?.addEventListener('click', function() {
+    const button = this;
+    const originalText = button.innerHTML;
+    
+    button.innerHTML = '<i class="bi bi-check-lg me-2"></i> Added to cart';
+    button.classList.add('bg-success', 'border-success');
+    
+    setTimeout(() => {
+        button.innerHTML = originalText;
+        button.classList.remove('bg-success', 'border-success');
+    }, 2000);
+});
+
+// Initialize analytics event tracking
+document.addEventListener('DOMContentLoaded', function() {
+    // Track product view
+    window.elasticAnalytics?.trackEvent({
+        event: {
+            name: 'product_viewed',
+            data: {
+                product_id: '{{ id }}',
+                product_name: '{{ name }}',
+                product_price: '{{ price }}',
+                currency: 'USD'
+            }
+        }
+    });
+    
+    // Track clicks on product buttons
+    document.querySelectorAll('.btn').forEach(button => {
+        button.addEventListener('click', function() {
+            let eventName = '';
+            let buttonText = this.textContent.trim();
+            
+            if (buttonText.includes('Add to cart')) {
+                eventName = 'product_added_to_cart';
+            } else if (this.querySelector('.bi-heart')) {
+                eventName = 'product_added_to_wishlist';
+            } else if (this.querySelector('.bi-share')) {
+                eventName = 'product_shared';
+            }
+            
+            if (eventName) {
+                window.elasticAnalytics?.trackEvent({
+                    event: {
+                        name: eventName,
+                        data: {
+                            product_id: '{{ id }}',
+                            product_name: '{{ name }}',
+                            product_price: '{{ price }}',
+                            currency: 'USD'
+                        }
+                    }
+                });
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

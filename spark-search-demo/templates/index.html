@@ -1,0 +1,379 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container py-4">
+    <!-- Hero search section -->
+    <div class="card glassmorphism mb-5 border-0 p-4">
+        <div class="card-body text-center px-4 py-5">
+            <h1 class="display-6 fw-bold mb-4">Discover Amazing Products</h1>
+            <form method="POST" action="{{ url_for('handle_search') }}" class="search-form mx-auto" style="max-width: 600px;">
+                <div class="input-group input-group-lg mb-3">
+                    <span class="input-group-text border-0 bg-white">
+                        <i class="bi bi-search text-muted"></i>
+                    </span>
+                    <input type="text" 
+                           class="form-control form-control-lg border-0 shadow-none" 
+                           name="query" 
+                           id="query" 
+                           placeholder="What are you looking for?" 
+                           value="{{ query }}" 
+                           autocomplete="off"
+                           autofocus>
+                    <button type="submit" class="btn btn-primary">
+                        Search
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if results %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-4">
+        <div class="text-muted mb-3 mb-md-0">
+            <i class="bi bi-list-ul me-1"></i> Showing results {{ from_ + 1 }}-{{ from_ + results|length }} out of {{ total }}
+        </div>
+        <div class="d-flex gap-2">
+            {% if from_ > 0 %}
+                <form method="POST">
+                    <input type="hidden" name="query" value="{{ query }}">
+                    <input type="hidden" name="from_" value="{{ from_ - 5 }}">
+                    <button type="submit" class="btn btn-outline-primary">
+                        <i class="bi bi-arrow-left"></i> Previous
+                    </button>
+                </form>
+            {% endif %}
+            {% if from_ + results|length < total %}
+                <form method="POST">
+                    <input type="hidden" name="query" value="{{ query }}">
+                    <input type="hidden" name="from_" value="{{ from_ + 5 }}">
+                    <button type="submit" class="btn btn-outline-primary">
+                        Next <i class="bi bi-arrow-right"></i>
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Filters -->
+        <div class="col-md-3">
+            <div class="d-flex align-items-center mb-4">
+                <a href="javascript:history.back(1)" class="text-decoration-none text-primary d-flex align-items-center">
+                    <i class="bi bi-arrow-left me-1"></i> Back
+                </a>
+            </div>
+            
+            <div class="sticky-top" style="top: 100px;">
+                {% for agg in aggs %}
+                    <div class="card mb-3 border-0">
+                        <div class="card-header bg-white border-0">
+                            <h6 class="mb-0 d-flex align-items-center">
+                                <i class="bi bi-filter me-2"></i>
+                                {{ agg }}
+                            </h6>
+                        </div>
+                        <div class="card-body pt-0">
+                            {% for key, count in aggs[agg].items() %}
+                                <form method="POST" class="mb-2">
+                                    <input type="hidden" name="query" value="{{ agg|lower }}:{{key}} {{ query }}">
+                                    <button type="submit" 
+                                            class="btn btn-link text-start w-100 p-0 text-decoration-none d-flex justify-content-between align-items-center"
+                                            {% if aggs[agg]|length == 1 %} disabled{% endif %}>
+                                        <span class="text-truncate">{{ key }}</span>
+                                        <span class="badge bg-secondary bg-opacity-10 text-secondary">{{ count }}</span>
+                                    </button>
+                                </form>
+                            {% endfor %}
+                        </div>
+                    </div>
+                {% endfor %}
+                
+                <!-- Additional filter controls could go here -->
+            </div>
+        </div>
+
+        <!-- Results -->
+        <div class="col-md-9">
+            {% for result in results %}
+                <div class="card border-0 mb-3 product-card position-relative">
+                    <div class="card-body p-0">
+                        <div class="row g-0">
+                            <!-- Thumbnail -->
+                            <div class="col-auto p-3">
+                                <div class="d-flex align-items-center justify-content-center bg-white rounded-3" 
+                                     style="width: 120px; height: 120px; overflow: hidden;">
+                                    {% if result._source.image %}
+                                        <img src="https://www.spark.co.nz{{ result._source.image[0] }}" 
+                                             class="img-fluid" 
+                                             alt="{{ result._source.name }}"
+                                             style="object-fit: contain; max-width: 100%; max-height: 100%;">
+                                    {% else %}
+                                        <i class="bi bi-image text-secondary" style="font-size: 2.5rem;"></i>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            
+                            <!-- Content -->
+                            <div class="col p-3">
+                                <div class="h-100 d-flex flex-column">
+                                    <h5 class="mb-2 product-title">
+                                        <a href="{{ url_for('get_document', doc_id=result._id) }}" 
+                                           class="text-decoration-none stretched-link text-dark">
+                                            {{ result._source.name }}
+                                        </a>
+                                    </h5>
+                                    <p class="text-dark mb-auto" style="font-size: 0.95rem;">
+                                        {{ result._source.description|truncate(100) }}
+                                    </p>
+                                    <div class="d-flex flex-wrap mt-2 align-items-center">
+                                        {% if result._source.category %}
+                                        <span class="badge bg-primary bg-opacity-10 text-primary me-2 mb-1">
+                                            {{ result._source.category }}
+                                        </span>
+                                        {% endif %}
+                                        
+                                        {% if result._source.price %}
+                                        <span class="badge bg-success bg-opacity-10 text-success me-2 mb-1">
+                                            ${{ result._source.price }}
+                                        </span>
+                                        {% endif %}
+
+					{% if result._score %}
+                                        <span class="badge bg-info bg-opacity-10 text-info me-2 mb-1">
+                                            Score: {{ "%.2f"|format(result._score) }}
+                                        </span>
+                                        {% endif %}
+                                        
+                                        <small class="text-muted ms-auto me-4">
+                                            Updated: {{ result._source.updated_at | default(result._source.last_crawled_at ) }}
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+            
+            <!-- If no results -->
+            {% if results|length == 0 %}
+                <div class="text-center py-5">
+                    <i class="bi bi-search" style="font-size: 3rem;"></i>
+                    <h3 class="mt-3">No products found</h3>
+                    <p class="text-muted">Try adjusting your search criteria</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    
+
+    {% elif request.method == 'POST' %}
+        <div class="alert glassmorphism border-0 py-4 px-4 text-center">
+            <i class="bi bi-info-circle mb-3" style="font-size: 2rem;"></i>
+            <h4>No results found</h4>
+            {% if suggestion %}
+                <p class="mb-0">Did you mean: <a href="#" onclick="document.getElementById('query').value='{{ suggestion }}'; document.forms[0].submit(); return false;" class="fw-medium">{{ suggestion }}</a>?</p>
+            {% endif %}
+        </div>
+        <script>
+            window.elasticAnalytics.trackSearch({
+                search: {
+                    query: "{{ query  }}",
+                    page: {
+                        current: 1,
+                        size: 5
+                    },
+                    results: {
+                        items: [],
+                        total_results: 0
+                    },
+                    sort: {
+                        name: "relevance"
+                    },
+                    search_application: "spark-search"
+                }
+            });
+        </script>
+    {% endif %}
+</div>
+
+<style>
+    .product-card {
+        transition: all 0.25s ease;
+        cursor: pointer;
+    }
+    .product-card:hover {
+        transform: translateY(-3px);
+    }
+    .product-card:hover .product-title {
+        color: var(--bs-primary) !important;
+    }
+    
+    /* Suggestions dropdown styling */
+    .suggestions {
+        border-radius: var(--bs-border-radius);
+        margin-top: 5px;
+        z-index: 1000;
+    }
+    .suggestion-item {
+        padding: 10px 15px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    .suggestion-item:hover {
+        background-color: var(--bs-secondary);
+    }
+    
+    /* Search icon animation */
+    @keyframes pulse {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.1); }
+        100% { transform: scale(1); }
+    }
+    .search-form:focus-within .bi-search {
+        color: var(--bs-primary) !important;
+        animation: pulse 1s infinite;
+    }
+</style>
+
+<script>
+// Enhanced suggestions with modern styling
+const searchInput = document.getElementById('query');
+const suggestionsContainer = document.createElement('div');
+suggestionsContainer.className = 'suggestions border shadow-sm position-absolute bg-white w-100 d-none';
+searchInput.parentElement.style.position = 'relative';
+searchInput.parentElement.appendChild(suggestionsContainer);
+
+let debounceTimer;
+searchInput.addEventListener('input', (e) => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+        const query = e.target.value.trim();
+        if (query.length < 2) {
+            suggestionsContainer.classList.add('d-none');
+            return;
+        }
+        
+        fetch(`/suggest?q=${encodeURIComponent(query)}`)
+            .then(response => response.json())
+            .then(suggestions => {
+                suggestionsContainer.innerHTML = '';
+                
+                if (suggestions.length === 0) {
+                    suggestionsContainer.classList.add('d-none');
+                    return;
+                }
+                
+                suggestions.forEach(suggestion => {
+                    const div = document.createElement('div');
+                    div.className = 'suggestion-item';
+                    div.textContent = suggestion.text;
+                    div.addEventListener('click', () => {
+                        searchInput.value = suggestion.text;
+                        suggestionsContainer.classList.add('d-none');
+                        searchInput.form.submit();
+                    });
+                    suggestionsContainer.appendChild(div);
+                });
+                
+                suggestionsContainer.classList.remove('d-none');
+            });
+    }, 300);
+});
+
+// Add focus effects
+searchInput.addEventListener('focus', () => {
+    searchInput.parentElement.classList.add('shadow-sm');
+});
+
+searchInput.addEventListener('blur', () => {
+    searchInput.parentElement.classList.remove('shadow-sm');
+    // Small delay to allow click on suggestion
+    setTimeout(() => {
+        if (!document.activeElement.classList.contains('suggestion-item')) {
+            suggestionsContainer.classList.add('d-none');
+        }
+    }, 150);
+});
+
+document.addEventListener('click', (e) => {
+    if (!searchInput.contains(e.target) && !suggestionsContainer.contains(e.target)) {
+        suggestionsContainer.classList.add('d-none');
+    }
+});
+
+// Animation for search results
+document.querySelectorAll('.card').forEach((card, index) => {
+    card.style.animationDelay = `${index * 0.05}s`;
+    card.classList.add('fade-in');
+});
+
+// Track search events
+function trackSearchEvent(query, results, from) {
+    const searchEvent = {
+        search: {
+            query: query,
+            page: {
+                current: Math.floor(from / 5) + 1,
+                size: 5
+            },
+            results: {
+                items: results.map(result => ({
+                    document: {
+                        id: result._id,
+                        index: 'search-dev-spark-product-index'
+                    },
+                    page: {
+                        url: `/document/${result._id}`
+                    }
+                })),
+                total_results: {{ total | default(0) }}
+            },
+            sort: {
+                name: "relevance"
+            },
+            search_application: "spark-search"
+        }
+    };
+    
+    window.elasticAnalytics.trackSearch(searchEvent);
+}
+
+// Track result clicks
+document.querySelectorAll('.product-card').forEach((card, index) => {
+    card.addEventListener('click', function() {
+        const docId = this.querySelector('a').href.split('/').pop();
+        window.elasticAnalytics.trackSearchClick({
+            document: {
+                id: docId,
+                index: 'search-dev-spark-product-index'
+            },
+            search: {
+                query: "{{ query  }}",
+                filters: {{ filters|tojson if filters else '[]' }},
+                page: {
+                    current: Math.floor({{ from_ }} / 5) + 1,
+                    size: 5
+                },
+                results: {
+                    total_results: {{ total }}
+                }
+            },
+            click: {
+                position: index + {{ from_ }} + 1
+            }
+        });
+    });
+});
+</script>
+
+<script type="text/javascript">
+    window.elasticAnalytics.createTracker({
+      endpoint: ""
+      collectionName: "",
+      apiKey: ""
+      user: {
+        token: () => ""
+      }
+    });
+</script>
+{% endblock %}
