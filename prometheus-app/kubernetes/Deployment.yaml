@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ecommerce-traffic-generator
+  labels:
+    app: ecommerce-traffic-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ecommerce-traffic-generator
+  template:
+    metadata:
+      labels:
+        app: ecommerce-traffic-generator
+    spec:
+      containers:
+      - name: ecommerce-traffic-generator
+        image: banjodocker/ecommerce-tarffic-generator:latest
+        ports:
+        - containerPort: 8000
+          name: metrics
+        env:
+        - name: PROMETHEUS_PORT
+          value: "8000"
+        - name: PYTHONUNBUFFERED
+          value: "1"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        livenessProbe:
+          httpGet:
+            path: /metrics
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /metrics
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        imagePullPolicy: Always
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ecommerce-traffic-generator-service
+  labels:
+    app: ecommerce-traffic-generator
+spec:
+  selector:
+    app: ecommerce-traffic-generator
+  ports:
+  - port: 8000
+    targetPort: 8000
+    protocol: TCP
+    name: metrics
+  type: ClusterIP
