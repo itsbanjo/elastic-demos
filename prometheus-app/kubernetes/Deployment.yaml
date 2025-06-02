@@ -1,7 +1,16 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sample-apps
+  labels:
+    name: sample-apps
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: ecommerce-traffic-generator
+  namespace: sample-apps
   labels:
     app: ecommerce-traffic-generator
 spec:
@@ -49,12 +58,12 @@ spec:
           timeoutSeconds: 5
           failureThreshold: 3
         imagePullPolicy: Always
-
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: ecommerce-traffic-generator-service
+  namespace: sample-apps
   labels:
     app: ecommerce-traffic-generator
 spec:
