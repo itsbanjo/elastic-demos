@@ -64,19 +64,20 @@ class EcommerceTrafficGenerator:
     def _init_metrics(self):
         """Initialize Prometheus metrics"""
         
-        # Total requests counter
-        self.total_requests = Counter(
+        # Total requests gauge - Using gauge to avoid automatic _total suffix
+        self.total_requests = Gauge(
             'total_requests',
             'The total number of requests serviced by this API',
             registry=self.registry
         )
+        self.total_requests_count = 0  # Internal counter
         
-        # Request duration histogram
+        # Request duration histogram - Updated to match target format exactly
         self.request_duration = Histogram(
             'request_duration_seconds',
             'The duration in seconds between the response to a request',
-            ['status_code', 'method', 'endpoint'],
-            buckets=[0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28, 2.56, 5.12, 10.24],
+            ['status_code', 'method'],  # Removed 'endpoint' to match target format
+            buckets=[0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 1.28, 2.56, 5.12, 10.24, 20.48],
             registry=self.registry
         )
         
@@ -174,12 +175,13 @@ class EcommerceTrafficGenerator:
         # Generate request duration
         duration = self._generate_request_duration(status_code)
         
-        # Update metrics
-        self.total_requests.inc()
+        # Update metrics - Updated to use gauge for total_requests
+        self.total_requests_count += 1
+        self.total_requests.set(self.total_requests_count)
         self.request_duration.labels(
             status_code=str(status_code),
-            method=method,
-            endpoint=endpoint
+            method=method
+            # Removed endpoint parameter to match target format
         ).observe(duration)
         
         # Business logic simulation
@@ -270,6 +272,34 @@ class EcommerceTrafficGenerator:
                 
             except Exception as e:
                 logger.error(f"Error calculating error rate: {e}")
+    
+    def _generate_initial_data(self):
+        """Generate some initial data to match the target metrics format"""
+        logger.info("Generating initial traffic data...")
+        
+        # Generate a burst of requests similar to your target data
+        initial_requests = [
+            # GET 200s - majority of traffic
+            ('GET', 200, 15000),
+            # GET 404s - some not found requests  
+            ('GET', 404, 100),
+            # POST 200s - API calls
+            ('POST', 200, 200),
+            # GET 400s - bad requests
+            ('GET', 400, 5),
+        ]
+        
+        for method, status_code, count in initial_requests:
+            for _ in range(count):
+                duration = self._generate_request_duration(status_code)
+                self.total_requests_count += 1
+                self.total_requests.set(self.total_requests_count)
+                self.request_duration.labels(
+                    status_code=str(status_code),
+                    method=method
+                ).observe(duration)
+        
+        logger.info("Initial data generation complete")
             
     def start(self):
         """Start the traffic generator"""
@@ -280,6 +310,9 @@ class EcommerceTrafficGenerator:
         logger.info(f"Prometheus metrics available at http://localhost:{self.port}/metrics")
         
         self.running = True
+        
+        # Generate some initial data to match target format
+        self._generate_initial_data()
         
         # Start background threads
         traffic_thread = threading.Thread(target=self._traffic_burst_pattern, daemon=True)
