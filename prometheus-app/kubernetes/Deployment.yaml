@@ -22,10 +22,14 @@ spec:
     metadata:
       labels:
         app: ecommerce-traffic-generator
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
       - name: ecommerce-traffic-generator
-        image: banjodocker/ecommerce-tarffic-generator:latest
+        image: banjodocker/ecommerce-traffic-generator:latest
         ports:
         - containerPort: 8000
           name: metrics
