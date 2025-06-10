@@ -1,0 +1,75 @@
+{{- if .Values.metricbeatConfig }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "metricbeat.fullname" . }}-config
+  namespace: {{ .Values.namespace | default "kube-system" }}
+  labels:
+    k8s-app: "{{ template "metricbeat.fullname" . }}"
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    heritage: {{ .Release.Service | quote }}
+    release: {{ .Release.Name | quote }}
+data:
+{{- range $path, $config := .Values.metricbeatConfig }}
+  {{ $path }}: |
+{{ $config | indent 4 -}}
+{{- end -}}
+{{- end -}}
+
+{{- if and .Values.daemonset.enabled .Values.daemonset.metricbeatConfig }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "metricbeat.fullname" . }}-daemonset-config
+  namespace: {{ .Values.namespace | default "kube-system" }}
+  labels:
+    k8s-app: {{ template "metricbeat.fullname" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    heritage: {{ .Release.Service | quote }}
+    release: {{ .Release.Name | quote }}
+data:
+{{- range $path, $config := .Values.daemonset.metricbeatConfig }}
+  {{ $path }}: |-
+{{ $config | indent 4 -}}
+{{- end -}}
+{{- end -}}
+
+{{- if and .Values.daemonset.enabled .Values.daemonset.metricbeatModules }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "metricbeat.fullname" . }}-daemonset-modules
+  namespace: {{ .Values.namespace | default "kube-system" }}
+  labels:
+    k8s-app: {{ template "metricbeat.fullname" . }}
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    heritage: {{ .Release.Service | quote }}
+    release: {{ .Release.Name | quote }}
+data:
+{{- range $path, $config := .Values.daemonset.metricbeatModules }}
+  {{ $path }}: |-
+{{ $config | indent 4 -}}
+{{- end -}}
+{{- end -}}
+
+{{- if and .Values.deployment.enabled .Values.deployment.metricbeatConfig }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ template "metricbeat.fullname" . }}-deployment-config
+  namespace: {{ .Values.namespace | default "kube-system" }}
+  labels:
+    k8s-app: "{{ template "metricbeat.fullname" . }}"
+    chart: "{{ .Chart.Name }}-{{ .Chart.Version }}"
+    heritage: {{ .Release.Service | quote }}
+    release: {{ .Release.Name | quote }}
+data:
+{{- range $path, $config := .Values.deployment.metricbeatConfig }}
+  {{ $path }}: |
+{{ $config | indent 4 -}}
+{{- end -}}
+{{- end -}}
