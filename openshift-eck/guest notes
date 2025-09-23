@@ -1,0 +1,216 @@
+guest notes
+
+# Master 01
+virt-install \
+  --name master01 \
+  --ram 16384 \
+  --vcpus 4 \
+  --disk path=/var/lib/libvirt/images/master01.qcow2,size=200,format=qcow2,bus=virtio \
+  --boot loader.readonly=yes \
+  --boot loader.type=pflash \
+  --boot loader.secure=no \
+  --boot loader=/usr/share/OVMF/OVMF_CODE.secboot.fd \
+  --boot nvram.template=/usr/share/OVMF/OVMF_VARS.fd \
+  --network bridge=openshift4,mac=52:54:00:8b:a1:17 \
+  --os-variant rhel8.0 \
+  --graphics vnc,listen=0.0.0.0 \
+  --noautoconsole \
+  --print-xml > /tmp/master01.xml
+virsh define /tmp/master01.xml
+
+# Master 02
+virt-install \
+  --name master02 \
+  --ram 16384 \
+  --vcpus 4 \
+  --disk path=/var/lib/libvirt/images/master02.qcow2,size=200,format=qcow2,bus=virtio \
+  --boot loader.readonly=yes \
+  --boot loader.type=pflash \
+  --boot loader.secure=no \
+  --boot loader=/usr/share/OVMF/OVMF_CODE.secboot.fd \
+  --boot nvram.template=/usr/share/OVMF/OVMF_VARS.fd \
+  --network bridge=openshift4,mac=52:54:00:ea:8b:9d \
+  --os-variant rhel8.0 \
+  --graphics vnc,listen=0.0.0.0 \
+  --noautoconsole \
+  --print-xml > /tmp/master02.xml
+virsh define /tmp/master02.xml
+
+# Master 03
+virt-install \
+  --name master03 \
+  --ram 16384 \
+  --vcpus 4 \
+  --disk path=/var/lib/libvirt/images/master03.qcow2,size=200,format=qcow2,bus=virtio \
+  --boot loader.readonly=yes \
+  --boot loader.type=pflash \
+  --boot loader.secure=no \
+  --boot loader=/usr/share/OVMF/OVMF_CODE.secboot.fd \
+  --boot nvram.template=/usr/share/OVMF/OVMF_VARS.fd \
+  --network bridge=openshift4,mac=52:54:00:f8:87:c7 \
+  --os-variant rhel8.0 \
+  --graphics vnc,listen=0.0.0.0 \
+  --noautoconsole \
+  --print-xml > /tmp/master03.xml
+virsh define /tmp/master03.xml
+
+# Worker 01 - AAP + General workloads
+virt-install \
+  --name worker01 \
+  --ram 24576 \
+  --vcpus 8 \
+  --disk path=/var/lib/libvirt/images/worker01.qcow2,size=200,format=qcow2,bus=virtio \
+  --boot loader.readonly=yes \
+  --boot loader.type=pflash \
+  --boot loader.secure=no \
+  --boot loader=/usr/share/OVMF/OVMF_CODE.secboot.fd \
+  --boot nvram.template=/usr/share/OVMF/OVMF_VARS.fd \
+  --network bridge=openshift4,mac=52:54:00:31:4a:39 \
+  --os-variant rhel8.0 \
+  --graphics vnc,listen=0.0.0.0 \
+  --noautoconsole \
+  --print-xml > /tmp/worker01.xml
+virsh define /tmp/worker01.xml
+
+# Worker 02 - ECK + General workloads  
+virt-install \
+  --name worker02 \
+  --ram 24576 \
+  --vcpus 8 \
+  --disk path=/var/lib/libvirt/images/worker02.qcow2,size=200,format=qcow2,bus=virtio \
+  --boot loader.readonly=yes \
+  --boot loader.type=pflash \
+  --boot loader.secure=no \
+  --boot loader=/usr/share/OVMF/OVMF_CODE.secboot.fd \
+  --boot nvram.template=/usr/share/OVMF/OVMF_VARS.fd \
+  --network bridge=openshift4,mac=52:54:00:6a:37:32 \
+  --os-variant rhel8.0 \
+  --graphics vnc,listen=0.0.0.0 \
+  --noautoconsole \
+  --print-xml > /tmp/worker02.xml
+virsh define /tmp/worker02.xml
+
+# Worker 03 - Container apps + General workloads
+virt-install \
+  --name worker03 \
+  --ram 24576 \
+  --vcpus 8 \
+  --disk path=/var/lib/libvirt/images/worker03.qcow2,size=200,format=qcow2,bus=virtio \
+  --boot loader.readonly=yes \
+  --boot loader.type=pflash \
+  --boot loader.secure=no \
+  --boot loader=/usr/share/OVMF/OVMF_CODE.secboot.fd \
+  --boot nvram.template=/usr/share/OVMF/OVMF_VARS.fd \
+  --network bridge=openshift4,mac=52:54:00:95:d4:ed \
+  --os-variant rhel8.0 \
+  --graphics vnc,listen=0.0.0.0 \
+  --noautoconsole \
+  --print-xml > /tmp/worker03.xml
+virsh define /tmp/worker03.xml
+
+
+
+
+# Worker Node Storage Attachment Command
+
+## Overview
+This command adds additional 1TB storage to all three OpenShift worker nodes in a single operation.
+
+## Command Breakdown
+
+```bash
+for node in worker01 worker02 worker03; do 
+  sudo qemu-img create -f qcow2 /var/lib/libvirt/images/${node}-vdb.qcow2 1000G && 
+  sudo virsh attach-disk $node /var/lib/libvirt/images/${node}-vdb.qcow2 vdb --persistent --subdriver qcow2 --cache directsync --io native; 
+done
+```
+
+## What Each Part Does
+
+### Loop Structure
+- `for node in worker01 worker02 worker03` - Loops through each worker node
+- `do ... done` - Executes commands for each node
+
+### Disk Creation
+- `qemu-img create -f qcow2` - Creates a new virtual disk in qcow2 format
+- `/var/lib/libvirt/images/${node}-vdb.qcow2` - Disk file path (unique per node)
+- `1000G` - Creates a 1TB disk
+
+### Disk Attachment
+- `virsh attach-disk` - Attaches the disk to the VM
+- `$node` - Target VM name (worker01, worker02, worker03)
+- `vdb` - Device name inside the VM (will appear as /dev/vdb)
+- `--persistent` - Survives VM reboots
+- `--subdriver qcow2` - Specifies qcow2 format
+- `--cache directsync` - Cache mode for data consistency
+- `--io native` - Direct I/O for better performance
+
+## Result
+After running this command, each worker node will have:
+- Original disk: `/dev/vda` (200GB - OS and OpenShift)
+- New disk: `/dev/vdb` (1TB - Additional storage)
+
+## Use Cases
+- **worker01**: AAP job storage and execution environments
+- **worker02**: Elasticsearch data and indices (ECK)
+- **worker03**: Persistent volumes for container applications
+
+# LVM Storage Operator (LVMS)
+
+## What It Is
+The LVM Storage Operator is Red Hat's solution for managing local storage on OpenShift clusters. It automatically converts raw disks (like your `/dev/vdb`) into usable persistent storage for applications.
+
+## How It Works
+1. **Takes raw disks** - Discovers and claims `/dev/vdb` on worker nodes
+2. **Creates LVM structures** - Sets up Volume Groups and Logical Volumes
+3. **Provides storage classes** - Makes storage available to applications
+4. **Manages automatically** - Handles provisioning, expansion, and cleanup
+
+## Key Benefits
+
+### For Your Cluster
+- **worker01 (AAP)**: Automatic storage for Ansible job data and execution environments
+- **worker02 (ECK)**: Dynamic Elasticsearch volumes that can grow as needed
+- **worker03 (Container apps)**: On-demand persistent volumes for applications
+
+### Operational Advantages
+- **No manual disk management** - OpenShift handles everything
+- **Dynamic provisioning** - Storage created when applications request it
+- **Thin provisioning** - Efficient use of disk space
+- **Storage classes** - Different performance tiers available
+
+## What You Get
+After installing LVMS with your 1TB `/dev/vdb` disks:
+
+```
+Raw Disk → LVM Volume Group → Storage Class → Persistent Volumes
+/dev/vdb → vdb-storage-vg → lvms-vdb-storage → Auto-created PVs
+```
+
+## Real-World Example
+When you deploy Elasticsearch on worker02:
+1. Elasticsearch requests storage
+2. LVMS automatically creates a Logical Volume from `/dev/vdb`
+3. Mounts it as a persistent volume
+4. Elasticsearch starts using it immediately
+
+## Bottom Line
+LVMS transforms your raw 1TB disks into enterprise-grade, automatically managed storage that your OpenShift applications can use on-demand.
+
+apiVersion: lvm.topolvm.io/v1alpha1
+kind: LVMCluster
+metadata:
+  name: ocp-lvmcluster
+  namespace: openshift-storage
+spec:
+  storage:
+    deviceClasses:
+    - name: vdb-storage
+      deviceSelector:
+        paths:
+        - /dev/vdb
+      thinPoolConfig:
+        name: thin-pool-1
+        sizePercent: 90
+        overprovisionRatio: 10
+      default: true

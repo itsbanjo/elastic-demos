@@ -1,0 +1,485 @@
+# ECK Installation and Configuration for OpenShift 4.18.1
+# Optimized for Observability with Machine Learning capabilities
+# Two data nodes + One ML node configuration
+
+# =============================================================================
+# STEP 1: Prerequisites - Set vm.max_map_count on OpenShift nodes
+# =============================================================================
+
+# Create a MachineConfig to set vm.max_map_count on all worker nodes
+# This is required before deploying Elasticsearch
+---
+apiVersion: machineconfiguration.openshift.io/v1
+kind: MachineConfig
+metadata:
+  labels:
+    machineconfiguration.openshift.io/role: worker
+  name: 75-worker-sysctl-elasticsearch
+spec:
+  config:
+    ignition:
+      version: 3.2.0
+    storage:
+      files:
+      - contents:
+          source: data:text/plain;charset=utf-8;base64,dm0ubWF4X21hcF9jb3VudCA9IDI2MjE0NAo=
+        mode: 420
+        overwrite: true
+        path: /etc/sysctl.d/vm_max_map_count.conf
+
+# =============================================================================
+# STEP 2: Create ECK namespace and install ECK Operator
+# =============================================================================
+
+# Create dedicated namespace for ECK workloads
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: elastic-observability
+  labels:
+    name: elastic-observability
+
+# Install ECK Operator via OperatorHub or apply CRDs and operator directly
+# For OperatorHub installation, search for "Elasticsearch (ECK) Operator" in OpenShift Console
+# For manual installation, apply these resources:
+
+# Note: ECK Operator will be installed in openshift-operators namespace via OperatorHub
+# The following Elasticsearch cluster will be deployed in elastic-observability namespace
+
+# =============================================================================
+# STEP 3: Elasticsearch Cluster Configuration
+# =============================================================================
+
+---
+apiVersion: elasticsearch.k8s.elastic.co/v1
+kind: Elasticsearch
+metadata:
+  name: observability-cluster
+  namespace: elastic-observability
+  annotations:
+    # Enable node scheduling to worker02 specifically
+    eck.k8s.elastic.co/downward-node-labels: "kubernetes.io/hostname"
+spec:
+  version: 9.1.2
+  
+  # =============================================================================
+  # Data Nodes - Optimized for Observability Workloads
+  # =============================================================================
+  nodeSets:
+  - name: data-observability
+    count: 2
+    config:
+      # Node roles optimized for observability data
+      node.roles: ["data_content", "data_hot", "ingest"]
+      
+      # Performance settings for observability
+      node.store.allow_mmap: false  # Required for OpenShift restricted SCC
+      
+      # Observability-specific settings
+      indices.memory.index_buffer_size: "20%"
+      cluster.routing.allocation.disk.threshold.enabled: true
+      cluster.routing.allocation.disk.watermark.low: "85%"
+      cluster.routing.allocation.disk.watermark.high: "90%"
+      cluster.routing.allocation.disk.watermark.flood_stage: "95%"
+      
+      # Data tier settings for hot data
+      node.attr.data_tier: "data_hot"
+      cluster.routing.allocation.awareness.attributes: "data_tier"
+      
+      # Index lifecycle management settings
+      xpack.ilm.enabled: true
+      
+    podTemplate:
+      metadata:
+        labels:
+          workload-type: observability-data
+      spec:
+        # Node selector to ensure scheduling on worker02
+        nodeSelector:
+          kubernetes.io/hostname: "worker02"  # Replace with actual worker02 hostname
+        
+        # Resource allocation for data nodes
+        containers:
+        - name: elasticsearch
+          resources:
+            requests:
+              memory: "8Gi"
+              cpu: "2000m"
+            limits:
+              memory: "8Gi"
+              cpu: "3000m"
+          env:
+          # JVM heap size (75% of container memory)
+          - name: ES_JAVA_OPTS
+            value: "-Xms6g -Xmx6g"
+          
+        # Security context for OpenShift
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          fsGroup: 1000
+          
+    # Persistent storage configuration
+    volumeClaimTemplates:
+    - metadata:
+        name: elasticsearch-data
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 80Gi
+        # Use appropriate storage class for your OpenShift environment
+        storageClassName: "gp3-csi"  # Adjust based on your storage class
+        
+  # =============================================================================
+  # Machine Learning Node
+  # =============================================================================
+  - name: ml-node
+    count: 1
+    config:
+      # Machine learning node roles
+      node.roles: ["ml", "remote_cluster_client"]
+      
+      # ML-specific settings
+      node.store.allow_mmap: false  # Required for OpenShift restricted SCC
+      
+      # ML memory settings
+      xpack.ml.max_machine_memory_percent: 80
+      xpack.ml.use_auto_machine_memory_percent: true
+      
+      # ML job settings
+      xpack.ml.max_anomaly_records: 500
+      xpack.ml.max_running_jobs: 20
+      
+    podTemplate:
+      metadata:
+        labels:
+          workload-type: machine-learning
+      spec:
+        # Node selector to ensure scheduling on worker02
+        nodeSelector:
+          kubernetes.io/hostname: "worker02"  # Replace with actual worker02 hostname
+        
+        # Resource allocation for ML node
+        containers:
+        - name: elasticsearch
+          resources:
+            requests:
+              memory: "6Gi"
+              cpu: "2000m"
+            limits:
+              memory: "6Gi"
+              cpu: "2000m"
+          env:
+          # JVM heap size for ML node (67% of container memory)
+          - name: ES_JAVA_OPTS
+            value: "-Xms4g -Xmx4g"
+            
+        # Security context for OpenShift
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          fsGroup: 1000
+          
+    # Persistent storage for ML node
+    volumeClaimTemplates:
+    - metadata:
+        name: elasticsearch-data
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 40Gi
+        storageClassName: "gp3-csi"  # Adjust based on your storage class
+
+  # =============================================================================
+  # HTTP Service Configuration
+  # =============================================================================
+  http:
+    tls:
+      selfSignedCertificate:
+        disabled: false
+    service:
+      metadata:
+        annotations:
+          # OpenShift service serving certificates
+          service.beta.openshift.io/serving-cert-secret-name: "observability-cluster-tls"
+      spec:
+        type: ClusterIP
+
+# =============================================================================
+# STEP 4: OpenShift Route for External Access
+# =============================================================================
+
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: elasticsearch-observability
+  namespace: elastic-observability
+spec:
+  tls:
+    termination: passthrough  # Elasticsearch handles TLS
+    insecureEdgeTerminationPolicy: Redirect
+  to:
+    kind: Service
+    name: observability-cluster-es-http
+  port:
+    targetPort: https
+
+# =============================================================================
+# STEP 5: Kibana Configuration for Observability
+# =============================================================================
+
+---
+apiVersion: kibana.k8s.elastic.co/v1
+kind: Kibana
+metadata:
+  name: observability-kibana
+  namespace: elastic-observability
+spec:
+  version: 9.1.2
+  count: 1
+  
+  # Reference to Elasticsearch cluster
+  elasticsearchRef:
+    name: observability-cluster
+    namespace: elastic-observability
+  
+  # Kibana configuration
+  config:
+    # Observability-specific Kibana settings
+    server.publicBaseUrl: "https://kibana-observability.apps.your-cluster-domain.com"  # Update with your OpenShift apps domain
+    xpack.fleet.enabled: true
+    xpack.infra.enabled: true
+    xpack.logs.enabled: true
+    xpack.apm.enabled: true
+    xpack.uptime.enabled: true
+    
+    # Machine learning integration
+    xpack.ml.enabled: true
+    
+  podTemplate:
+    metadata:
+      labels:
+        workload-type: observability-ui
+    spec:
+      # Node selector for worker02
+      nodeSelector:
+        kubernetes.io/hostname: "worker02"  # Replace with actual worker02 hostname
+      
+      containers:
+      - name: kibana
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        env:
+        - name: NODE_OPTIONS
+          value: "--max-old-space-size=1800"
+          
+      # Security context for OpenShift
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+
+  # HTTP service configuration
+  http:
+    tls:
+      selfSignedCertificate:
+        disabled: false
+    service:
+      metadata:
+        annotations:
+          # OpenShift service serving certificates
+          service.beta.openshift.io/serving-cert-secret-name: "kibana-observability-tls"
+
+# =============================================================================
+# STEP 6: Kibana Route for External Access
+# =============================================================================
+
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: kibana-observability
+  namespace: elastic-observability
+spec:
+  tls:
+    termination: passthrough  # Kibana handles TLS
+    insecureEdgeTerminationPolicy: Redirect
+  to:
+    kind: Service
+    name: observability-kibana-kb-http
+  port:
+    targetPort: https
+
+# =============================================================================
+# STEP 7: Index Templates for Observability Data
+# =============================================================================
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: observability-index-templates
+  namespace: elastic-observability
+data:
+  logs-template.json: |
+    {
+      "index_patterns": ["logs-*"],
+      "template": {
+        "settings": {
+          "number_of_shards": 1,
+          "number_of_replicas": 1,
+          "index.lifecycle.name": "logs-policy",
+          "index.lifecycle.rollover_alias": "logs"
+        },
+        "mappings": {
+          "properties": {
+            "@timestamp": {"type": "date"},
+            "message": {"type": "text"},
+            "level": {"type": "keyword"},
+            "service": {"type": "keyword"},
+            "host": {"type": "keyword"}
+          }
+        }
+      }
+    }
+  
+  metrics-template.json: |
+    {
+      "index_patterns": ["metrics-*"],
+      "template": {
+        "settings": {
+          "number_of_shards": 1,
+          "number_of_replicas": 1,
+          "index.lifecycle.name": "metrics-policy",
+          "index.lifecycle.rollover_alias": "metrics"
+        },
+        "mappings": {
+          "properties": {
+            "@timestamp": {"type": "date"},
+            "value": {"type": "double"},
+            "metric_name": {"type": "keyword"},
+            "service": {"type": "keyword"},
+            "host": {"type": "keyword"}
+          }
+        }
+      }
+    }
+
+# =============================================================================
+# STEP 8: Index Lifecycle Management Policies
+# =============================================================================
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: observability-ilm-policies
+  namespace: elastic-observability
+data:
+  logs-policy.json: |
+    {
+      "policy": {
+        "phases": {
+          "hot": {
+            "actions": {
+              "rollover": {
+                "max_size": "5GB",
+                "max_age": "1d"
+              }
+            }
+          },
+          "warm": {
+            "min_age": "7d",
+            "actions": {
+              "allocate": {
+                "number_of_replicas": 0
+              }
+            }
+          },
+          "delete": {
+            "min_age": "30d"
+          }
+        }
+      }
+    }
+  
+  metrics-policy.json: |
+    {
+      "policy": {
+        "phases": {
+          "hot": {
+            "actions": {
+              "rollover": {
+                "max_size": "10GB",
+                "max_age": "1d"
+              }
+            }
+          },
+          "warm": {
+            "min_age": "3d",
+            "actions": {
+              "allocate": {
+                "number_of_replicas": 0
+              }
+            }
+          },
+          "delete": {
+            "min_age": "90d"
+          }
+        }
+      }
+    }
+
+# =============================================================================
+# DEPLOYMENT INSTRUCTIONS
+# =============================================================================
+
+# 1. First, apply the MachineConfig to set vm.max_map_count:
+#    oc apply -f machineconfig-elasticsearch.yaml
+#    Wait for nodes to reboot and apply the sysctl setting
+
+# 2. Install ECK Operator via OpenShift OperatorHub:
+#    - Go to Operators > OperatorHub
+#    - Search for "Elasticsearch (ECK) Operator"
+#    - Install the certified operator
+
+# 3. Create the namespace and apply the Elasticsearch configuration:
+#    oc apply -f this-file.yaml
+
+# 4. Wait for the cluster to be ready:
+#    oc get elasticsearch -n elastic-observability -w
+
+# 5. Get the elastic user password:
+#    oc get secret observability-cluster-es-elastic-user -n elastic-observability -o go-template='{{.data.elastic | base64decode}}'
+
+# 6. Access Kibana via the route:
+#    oc get route kibana-observability -n elastic-observability
+
+# 7. Apply index templates and ILM policies using Kibana Dev Tools or REST API
+
+# =============================================================================
+# MONITORING AND MAINTENANCE
+# =============================================================================
+
+# Monitor cluster health:
+# oc exec -n elastic-observability observability-cluster-es-data-observability-0 -- curl -u elastic:PASSWORD -k https://localhost:9200/_cluster/health?pretty
+
+# Check ML node status:
+# oc exec -n elastic-observability observability-cluster-es-ml-node-0 -- curl -u elastic:PASSWORD -k https://localhost:9200/_ml/info
+
+# Monitor resource usage:
+# oc top pods -n elastic-observability
+
+# Scale data nodes if needed:
+# oc patch elasticsearch observability-cluster -n elastic-observability --type='merge' -p='{"spec":{"nodeSets":[{"name":"data-observability","count":3}]}}'
