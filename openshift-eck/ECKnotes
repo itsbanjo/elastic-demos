@@ -221,6 +221,7 @@ metadata:
   namespace: elastic-observability
 spec:
   config:
+    xpack.fleet.agents.fleet_server.hosts: ["https://fleet-server-agent-http.elastic-observability.svc.cluster.local:8220"]
     xpack.fleet.packages:
     - name: system
       version: latest
@@ -353,3 +354,5 @@ spec:
         volumes:
         - name: agent-data
           emptyDir: {}
+
+https://kube-state-metrics.openshift-monitoring.svc.cluster.local:9443
