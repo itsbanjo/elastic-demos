@@ -47,7 +47,7 @@ spec:
     count: 1
     config:
       # Node roles: master + data for high availability
-      node.roles: ["master", "data_content", "data_hot", "ingest"]
+      node.roles: ["master", "data_content", "data_hot", "ingest", "remote_cluster_client"]
       
       # Performance settings
       node.store.allow_mmap: false  # Required for OpenShift restricted SCC
@@ -103,7 +103,7 @@ spec:
     count: 1
     config:
       # Node roles: master + data for high availability
-      node.roles: ["master", "data_content", "data_hot", "ingest"]
+      node.roles: ["master", "data_content", "data_hot", "ingest", "remote_cluster_client"]
       
       # Performance settings
       node.store.allow_mmap: false
@@ -351,8 +351,57 @@ spec:
           volumeMounts:
           - name: agent-data
             mountPath: /usr/share/elastic-agent/state
+          - name: service-ca
+            mountPath: /etc/ssl/certs/service-ca.crt
+            subPath: service-ca.crt
+            readOnly: true
         volumes:
         - name: agent-data
           emptyDir: {}
+        - name: service-ca
+          configMap:
+            name: openshift-service-ca.crt
 
 https://kube-state-metrics.openshift-monitoring.svc.cluster.local:9443
+
+In the ElasticAgent DaemonSet
+
+```
+spec:
+  template:
+    spec:
+      # ... existing config ...
+      volumes:
+        - name: proc
+          hostPath:
+            path: /proc
+            type: ''
+        - name: cgroup
+          hostPath:
+            path: /sys/fs/cgroup
+            type: ''
+        # ... all your existing volumes ...
+        - name: elastic-agent-state
+          hostPath:
+            path: /var/lib/elastic-agent-managed/kube-system/state
+            type: DirectoryOrCreate
+        # ADD THIS:
+        - name: service-ca
+          configMap:
+            name: openshift-service-ca.crt
+
+
+        - name: elastic-agent
+          # ... existing config ...
+          volumeMounts:
+            - name: proc
+              readOnly: true
+              mountPath: /hostfs/proc
+            # ... all your existing volumeMounts ...
+            - name: elastic-agent-state
+              mountPath: /usr/share/elastic-agent/state
+            # ADD THIS:
+            - name: service-ca
+              mountPath: /etc/ssl/certs/service-ca.crt
+              subPath: service-ca.crt
+              readOnly: true
