@@ -1,14 +1,20 @@
 #!/bin/bash
 
+# Ensure we're using bash
+if [ -z "$BASH_VERSION" ]; then
+    echo "This script requires bash. Please run with: bash deploy-iccp-simulators.sh"
+    exit 1
+fi
+
 # Configuration variables - easily customizable
 DOCKER_IMAGE="${DOCKER_IMAGE:-yourdockerhubusername/iccp-simulator:latest}"
 NAMESPACE="${NAMESPACE:-transpower-demo}"
 KAFKA_BOOTSTRAP="${KAFKA_BOOTSTRAP:-transpower-kafka-kafka-bootstrap:9092}"
 DEFAULT_REPLICAS="${DEFAULT_REPLICAS:-1}"
-MEMORY_REQUEST="${MEMORY_REQUEST:-128Mi}"
-MEMORY_LIMIT="${MEMORY_LIMIT:-256Mi}"
-CPU_REQUEST="${CPU_REQUEST:-100m}"
-CPU_LIMIT="${CPU_LIMIT:-200m}"
+MEMORY_REQUEST="${MEMORY_REQUEST:-64Mi}"
+MEMORY_LIMIT="${MEMORY_LIMIT:-128Mi}"
+CPU_REQUEST="${CPU_REQUEST:-25m}"
+CPU_LIMIT="${CPU_LIMIT:-100m}"
 
 echo "=== Deploying ICCP Simulators for Transpower Demo ==="
 echo "Docker Image: $DOCKER_IMAGE"
@@ -90,18 +96,12 @@ data:
     }
 EOF
 
-# Define sites array - easily extensible
-sites=("auckland-penrose" "wellington-central" "christchurch-addington" "huntly-power" "manapouri-power")
-
-# Optional: Add more sites by uncommenting
-# sites+=("taupo-geothermal" "new-plymouth-power")
-
 # Function to deploy a single site
 deploy_site() {
     local site=$1
     local replicas=${2:-$DEFAULT_REPLICAS}
     
-    echo "Deploying ICCP simulator for: $site (${replicas} replicas)"
+    echo "Deploying ICCP simulator for: $site ($replicas replicas)"
     
     oc apply -f - <<EOF
 apiVersion: apps/v1
@@ -125,12 +125,10 @@ spec:
         app: iccp-simulator
         site: ${site}
         component: transpower-iccp
-        imagePullPolicy: Always
     spec:
       containers:
       - name: iccp-simulator
         image: $DOCKER_IMAGE
-        
         env:
         - name: KAFKA_BROKERS
           value: "$KAFKA_BOOTSTRAP"
@@ -200,24 +198,28 @@ EOF
     fi
 }
 
-# Deploy all sites
-for site in "${sites[@]}"; do
-    # You can specify different replicas per site like this:
-    case $site in
-        "auckland-penrose")
-            deploy_site "$site" 2  # High-traffic site gets 2 replicas
-            ;;
-        "huntly-power"|"manapouri-power")
-            deploy_site "$site" 1  # Power stations get 1 replica
-            ;;
-        *)
-            deploy_site "$site" $DEFAULT_REPLICAS
-            ;;
-    esac
-    
-    # Small delay between deployments to avoid overwhelming the cluster
-    sleep 2
-done
+# Deploy all sites - using simple iteration instead of arrays
+echo "Deploying Auckland Penrose..."
+deploy_site "auckland-penrose" 1
+
+echo "Deploying Wellington Central..."
+deploy_site "wellington-central" 1
+
+echo "Deploying Christchurch Addington..."
+deploy_site "christchurch-addington" 1
+
+echo "Deploying Huntly Power..."
+deploy_site "huntly-power" 1
+
+echo "Deploying Manapouri Power..."
+deploy_site "manapouri-power" 1
+
+# Optional: Deploy additional sites
+# echo "Deploying Taupo Geothermal..."
+# deploy_site "taupo-geothermal" 1
+
+# echo "Deploying New Plymouth Power..."
+# deploy_site "new-plymouth-power" 1
 
 # Create service for simulators (optional - for monitoring/debugging)
 echo ""
@@ -244,16 +246,26 @@ EOF
 # Wait for deployments to be ready
 echo ""
 echo "Waiting for ICCP simulators to be ready..."
-for site in "${sites[@]}"; do
-    echo "Waiting for iccp-simulator-${site}..."
-    oc rollout status deployment/iccp-simulator-${site} -n $NAMESPACE --timeout=120s
-done
+echo "Waiting for iccp-simulator-auckland-penrose..."
+oc rollout status deployment/iccp-simulator-auckland-penrose -n $NAMESPACE --timeout=120s
+
+echo "Waiting for iccp-simulator-wellington-central..."
+oc rollout status deployment/iccp-simulator-wellington-central -n $NAMESPACE --timeout=120s
+
+echo "Waiting for iccp-simulator-christchurch-addington..."
+oc rollout status deployment/iccp-simulator-christchurch-addington -n $NAMESPACE --timeout=120s
+
+echo "Waiting for iccp-simulator-huntly-power..."
+oc rollout status deployment/iccp-simulator-huntly-power -n $NAMESPACE --timeout=120s
+
+echo "Waiting for iccp-simulator-manapouri-power..."
+oc rollout status deployment/iccp-simulator-manapouri-power -n $NAMESPACE --timeout=120s
 
 echo ""
 echo "=== ICCP Simulators Deployment Summary ==="
 echo "ConfigMap: iccp-sites-config"
-echo "Service: iccp-simulators" 
-echo "Sites deployed: ${sites[*]}"
+echo "Service: iccp-simulators"
+echo "Sites deployed: auckland-penrose wellington-central christchurch-addington huntly-power manapouri-power (1 replica each)"
 echo ""
 echo "Check status with:"
 echo "   oc get pods -n $NAMESPACE -l app=iccp-simulator"
