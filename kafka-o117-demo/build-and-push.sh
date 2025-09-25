@@ -3,9 +3,9 @@
 
 # Configuration
 DOCKER_REGISTRY="docker.io"  # Change to your registry
-DOCKER_USERNAME="username"  # Replace with your Docker Hub username
+DOCKER_USERNAME="banjodocker"  # Replace with your Docker Hub username
 IMAGE_NAME="iccp-simulator"
-VERSION="v1.0.0"
+VERSION="v1.0.1"
 
 echo "🔨 Building ICCP Simulator Docker Image"
 

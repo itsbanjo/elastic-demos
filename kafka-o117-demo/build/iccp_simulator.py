@@ -195,7 +195,7 @@ class ICCPSimulator:
             retry_backoff_ms=1000,
             retries=5,
             acks='all',
-            compression_type='snappy'
+            compression_type='none'
         )
     
     def send_message(self, message: Dict[str, Any]):

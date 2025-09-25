@@ -125,10 +125,12 @@ spec:
         app: iccp-simulator
         site: ${site}
         component: transpower-iccp
+        imagePullPolicy: Always
     spec:
       containers:
       - name: iccp-simulator
         image: $DOCKER_IMAGE
+        
         env:
         - name: KAFKA_BROKERS
           value: "$KAFKA_BOOTSTRAP"
