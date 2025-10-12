@@ -1,0 +1,17 @@
+# Core Flask dependencies
+Flask==3.0.0
+Flask-CORS==4.0.0
+
+# Latest Elasticsearch client
+elasticsearch==8.12.0
+
+# Latest stable OpenAI client with compatible httpx
+openai==1.52.0
+httpx==0.27.0
+
+# APM monitoring (latest)
+elastic-apm==6.20.0
+
+# Additional useful packages
+python-dotenv==1.0.0
+requests==2.31.0
