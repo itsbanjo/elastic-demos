@@ -1,5 +1,77 @@
 # RAG Chatbot Overlay - Technical Documentation
 
+
+Quick Start Guide (TL;DR)
+Prerequisites
+
+Python 3.8+
+Chrome Browser (Developer Mode enabled)
+Elasticsearch Cloud account with ELSER v2 deployed
+OpenAI API key
+
+1. Configure Backend (5 minutes)
+bash# Clone/download the project files
+cd rag-chatbot-system
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Create .env file with credentials
+cat > .env << EOF
+ELASTIC_CLOUD_ID=your_cloud_id_here
+ELASTIC_API_KEY=your_api_key_here
+OPENAI_API_KEY=your_openai_key_here
+SEARCH_INDEX=your-index-name
+OPENAI_MODEL=gpt-3.5-turbo
+EOF
+
+# Start the server
+python server.py
+Server should start on http://localhost:5000. Verify with: curl http://localhost:5000/status
+2. Setup Elasticsearch Index (10 minutes)
+Your Elasticsearch index needs only 2 required fields to work:
+
+name - Product name/title
+semantic_body.inference.chunks - ELSER embeddings
+
+See fields.md for complete field mapping specification, optional fields, and sample documents.
+Quick test query to verify your index:
+bashcurl -X POST "http://localhost:5000/query" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "show me headphones", "website": "example.com"}'
+3. Install Chrome Extension (2 minutes)
+bash# Open Chrome and navigate to:
+chrome://extensions/
+
+# Enable "Developer mode" (toggle in top-right)
+
+# Click "Load unpacked" and select the extension folder containing:
+# - manifest.json
+# - background.js
+# - overlay.js
+# - overlay.css
+# - popup.html
+# - popup.js
+
+# Click the extension icon and add your test website domain
+4. Test the System (1 minute)
+
+Navigate to any configured website
+The chatbot overlay should appear in the bottom-right corner
+Type a test query like "show me products" or "what colors are available?"
+Verify you see:
+
+✅ AI-generated response with citations
+✅ Product cards (if products found)
+✅ Clickable references
+✅ Smart suggestion pills
+
+
+
+Troubleshooting Quick Checks
+IssueQuick FixExtension not showingCheck website is in configured list (click extension icon)No search resultsVerify SEARCH_INDEX name matches your Elasticsearch indexServer errorCheck .env credentials and run /status endpointProducts display incorrectlySee fields.md for field mapping requirements
+Total setup time: ~20 minutes
+
 ## Executive Summary
 
 This document describes a retrieval-augmented generation (RAG) chatbot system designed as a Chrome extension overlay for e-commerce websites. The system combines semantic search with large language models to provide intelligent product recommendations and customer support directly within the browser.
