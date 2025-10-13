@@ -1,24 +1,39 @@
 # RAG Chatbot Overlay - Technical Documentation
 
-## Overview
+## Executive Summary
 
-The RAG (Retrieval-Augmented Generation) Chatbot Overlay is an intelligent e-commerce assistant that provides contextual product recommendations and support directly on customer websites. The system combines semantic search capabilities with large language models to deliver accurate, cited responses with smart follow-up suggestions.
+This document describes a retrieval-augmented generation (RAG) chatbot system designed as a Chrome extension overlay for e-commerce websites. The system combines semantic search with large language models to provide intelligent product recommendations and customer support directly within the browser.
 
-## Key Features
+The solution addresses the common challenge of helping customers find relevant products quickly by understanding natural language queries and providing contextual, cited responses along with visual product cards and intelligent follow-up suggestions.
 
-- **🔍 Semantic Search**: Advanced ELSER-powered search through product catalogs
-- **🤖 AI-Powered Responses**: OpenAI integration for natural language generation
-- **📱 Chrome Extension**: Non-intrusive overlay that works on any configured website
-- **🛍️ Product Cards**: Visual product recommendations with direct purchase links
-- **📚 Clickable References**: Source citations that link back to original content
-- **💡 Smart Suggestions**: AI-generated follow-up questions to guide customer journey
-- **🎨 Modern UI**: Responsive design with smooth animations and gradients
+---
+
+## System Overview
+
+The chatbot operates as a browser extension that injects an overlay interface into configured websites. When a user asks a question, the system searches an Elasticsearch index using semantic search, retrieves relevant products, generates a conversational response using OpenAI's GPT models, and suggests relevant follow-up queries to guide the customer journey.
+
+### Core Capabilities
+
+The system provides several key features:
+
+- Semantic search across product catalogs using ELSER embeddings
+- Natural language response generation with source citations
+- Visual product cards with images, pricing, and purchase links
+- Clickable reference links to source documents
+- AI-generated follow-up questions tailored to the conversation context
+- Responsive UI with smooth animations and modern design patterns
+
+### Technology Stack
+
+The backend runs on Flask and integrates with Elasticsearch Cloud for search and OpenAI for language generation. The frontend is a vanilla JavaScript Chrome extension with no external dependencies, making it lightweight and fast.
 
 ---
 
 ## System Architecture
 
-### High-Level Architecture Diagram
+### High-Level Architecture
+
+The system consists of three main layers: the client layer (Chrome extension), the application layer (Flask API), and the data layer (Elasticsearch indices).
 
 ```mermaid
 graph TB
@@ -34,8 +49,8 @@ graph TB
     end
     
     subgraph "Data Layer"
-        IDX[Product Index<br/>search-spark-products-all-segments]
-        PROD[Product Data<br/>Structured JSON]
+        IDX[Product Index<br/>Structured Data]
+        PROD[Product Catalog<br/>JSON Documents]
     end
     
     CE --> Flask
@@ -52,7 +67,11 @@ graph TB
     style IDX fill:#fce4ec
 ```
 
-### Component Interaction Flow
+When a user submits a query, the extension sends it to the Flask server, which performs a semantic search in Elasticsearch. The search results are then packaged with context and sent to OpenAI to generate a natural language response. The server also calls OpenAI again to generate smart follow-up questions based on the conversation context. All of this is then returned to the extension for display.
+
+### Request Flow
+
+A typical user interaction follows this sequence:
 
 ```mermaid
 sequenceDiagram
@@ -82,11 +101,15 @@ sequenceDiagram
     Extension->>Flask: New query (repeat flow)
 ```
 
+This architecture keeps the client lightweight while offloading heavy processing to the server. The extension only handles UI rendering and user interaction.
+
 ---
 
-## Technical Components
+## Chrome Extension Architecture
 
-### 1. Chrome Extension Architecture
+### Component Structure
+
+The extension consists of four main files working together:
 
 ```mermaid
 graph LR
@@ -112,14 +135,27 @@ graph LR
     style OVL fill:#2196f3
 ```
 
-**Key Files:**
-- `manifest.json` - Extension configuration and permissions
-- `background.js` - Service worker for initialization
-- `overlay.js` - Main content script with UI logic
-- `overlay.css` - Modern styling with animations
-- `popup.html/js` - Extension configuration interface
+The background service worker initializes the extension and manages configuration. The content script injects the overlay into matching websites and handles all user interactions. The popup provides a configuration interface where users can add or remove websites where the chatbot should appear.
 
-### 2. Backend API Architecture
+### Key Files
+
+**manifest.json** defines the extension metadata, permissions, and content script injection rules. It uses Manifest V3, which is the current standard for Chrome extensions.
+
+**background.js** runs as a service worker and sets default configuration when the extension is first installed. It maintains the list of websites where the overlay should appear.
+
+**overlay.js** is the main content script that creates the chatbot UI, handles user input, makes API calls to the Flask server, and renders responses. It includes markdown parsing, product card rendering, and suggestion pill generation.
+
+**overlay.css** provides all styling with modern CSS including gradients, animations, and responsive design patterns. The design uses a purple gradient theme with smooth transitions.
+
+**popup.html/js** creates the extension popup interface where users can configure which websites should display the chatbot overlay.
+
+---
+
+## Backend Architecture
+
+### Flask Application Structure
+
+The Flask server handles three main responsibilities: search orchestration, response generation, and suggestion creation.
 
 ```mermaid
 graph TB
@@ -157,7 +193,23 @@ graph TB
     style OPENAI_API fill:#4caf50
 ```
 
-### 3. Data Flow Architecture
+The search logic queries Elasticsearch using ELSER semantic embeddings to find relevant products. Results are then processed to extract structured product data and create a context string that includes all relevant information. This context, along with the user's query, is sent to OpenAI to generate a conversational response. A second OpenAI call generates follow-up suggestions based on the conversation context.
+
+### API Endpoints
+
+The server exposes two main endpoints:
+
+**POST /query** accepts a user question and website context, performs the search and generation pipeline, and returns a complete response package including the AI-generated text, product cards, source references, and smart suggestions.
+
+**GET /status** returns health check information about the Elasticsearch and OpenAI connections, useful for monitoring and debugging.
+
+---
+
+## Data Flow
+
+### Processing Pipeline
+
+The data flows through several transformation stages from query to response:
 
 ```mermaid
 graph TD
@@ -206,127 +258,74 @@ graph TD
     style RESP fill:#fff3e0
 ```
 
----
+First, the query goes through semantic search using ELSER embeddings to find conceptually similar content, even if exact keywords don't match. A keyword search runs in parallel as a fallback. Reciprocal Rank Fusion combines results from both approaches to ensure we get both semantic matches and exact keyword matches.
 
-## API Specification
+The search results are transformed into a structured context that includes product names, descriptions, prices, colors, and other attributes. This context is formatted into a prompt that instructs the AI on how to respond (conversational, helpful, with citations). The AI generates a response using this context.
 
-### Main Query Endpoint
+A second AI call analyzes the conversation and product context to generate relevant follow-up questions. These are filtered to ensure they focus on products rather than personal preferences.
 
-**POST** `/query`
-
-```json
-{
-  "text": "Show me iPhone 15 cases",
-  "website": "spark.co.nz"
-}
-```
-
-**Response:**
-```json
-{
-  "response": "I found several iPhone 15 cases for you [1][2]...",
-  "sources": 5,
-  "products": [
-    {
-      "name": "iPhone 15 Pro Clear Case",
-      "price": 79.99,
-      "url": "https://spark.co.nz/shop/...",
-      "image": "/images/iphone-case.jpg",
-      "sku": "IP15-CASE-001",
-      "description": "Premium clear protection..."
-    }
-  ],
-  "sourceDetails": [
-    {
-      "index": 1,
-      "title": "iPhone 15 Pro Clear Case",
-      "url": "https://spark.co.nz/shop/...",
-      "description": "Premium clear protection...",
-      "host": "spark.co.nz"
-    }
-  ],
-  "suggestions": [
-    "Check available colors",
-    "Compare case materials", 
-    "View screen protectors",
-    "Find charging accessories"
-  ]
-}
-```
-
-### Status Endpoint
-
-**GET** `/status`
-
-Returns system health and configuration status.
+Finally, all components (AI response, product cards, references, suggestions) are packaged and sent back to the extension for rendering.
 
 ---
 
-## Core Technologies
-
-### Backend Stack
-- **Flask 3.0.0** - Web framework
-- **Elasticsearch 8.12.0** - Semantic search engine
-- **OpenAI 1.52.0** - Large language model integration
-- **Python 3.8+** - Runtime environment
-
-### Frontend Stack
-- **Chrome Extension Manifest V3** - Browser extension framework
-- **Vanilla JavaScript** - No external dependencies
-- **CSS3** - Modern styling with animations
-- **HTML5** - Semantic markup
-
-### Search Technology
-- **ELSER v2** - Elasticsearch Learned Sparse Encoder for semantic search
-- **Reciprocal Rank Fusion (RRF)** - Multi-retriever result combining
-- **Nested field indexing** - Structured product data storage
-
----
-
-## Search Implementation Details
+## Search Implementation
 
 ### Elasticsearch Query Strategy
 
-The system uses a multi-retriever approach with RRF:
+The search uses a nested query structure to access ELSER embeddings stored in a specific field structure:
 
-1. **Semantic Body Search**
-   ```python
-   {
-     "nested": {
-       "path": "semantic_body.inference.chunks",
-       "query": {
-         "sparse_vector": {
-           "inference_id": ".elser-2-elasticsearch",
-           "field": "semantic_body.inference.chunks.embeddings",
-           "query": user_query
-         }
-       }
-     }
-   }
-   ```
+```python
+{
+  "nested": {
+    "path": "semantic_body.inference.chunks",
+    "query": {
+      "sparse_vector": {
+        "inference_id": ".elser-2-elasticsearch",
+        "field": "semantic_body.inference.chunks.embeddings",
+        "query": user_query
+      }
+    },
+    "inner_hits": {
+      "size": 10,
+      "name": "semantic_body",
+      "_source": ["text"]
+    }
+  }
+}
+```
 
-2. **Keyword Search Fallback**
-   ```python
-   {
-     "multi_match": {
-       "query": user_query,
-       "fields": ["name^3", "title^2", "description", "color"],
-       "type": "best_fields",
-       "fuzziness": "AUTO"
-     }
-   }
-   ```
+This structure allows the search to find semantically similar content even when the exact words differ. For example, searching for "phone protection" would find results about "cases" and "screen protectors" because ELSER understands the semantic relationship.
 
-3. **Result Fusion**
-   - RRF combines multiple retriever scores
-   - Ensures diverse, relevant results
-   - Handles both semantic and exact matches
+The inner_hits parameter ensures we get the actual text chunks that matched, which helps with context creation and citation accuracy.
+
+### Multi-Match Fallback
+
+A keyword search runs in parallel using a multi_match query across several fields:
+
+```python
+{
+  "multi_match": {
+    "query": user_query,
+    "fields": ["name^3", "title^2", "description", "color"],
+    "type": "best_fields",
+    "fuzziness": "AUTO"
+  }
+}
+```
+
+Field boosting (the ^3 and ^2 notation) makes matches in the name field more important than matches in the description. The AUTO fuzziness handles typos gracefully.
+
+### Result Fusion
+
+Reciprocal Rank Fusion combines results from multiple retrievers using a formula that gives higher weight to documents that rank highly across multiple search strategies. This ensures we don't miss relevant results that might only match one approach.
 
 ---
 
-## Smart Suggestions Algorithm
+## Smart Suggestions System
 
-### LLM-Powered Suggestion Generation
+### Generation Strategy
+
+The suggestions feature uses a separate OpenAI call with carefully crafted prompts to generate relevant follow-up questions:
 
 ```mermaid
 graph LR
@@ -337,7 +336,7 @@ graph LR
     end
     
     subgraph "Context Processing"
-        PT[Product Types<br/>iPhone, Samsung, etc.]
+        PT[Product Types<br/>Phones, Cases, etc.]
         BR[Brands<br/>Apple, Samsung]
         PR[Price Ranges<br/>Min/Max]
     end
@@ -370,16 +369,297 @@ graph LR
     style JSON fill:#4caf50
 ```
 
+The system first analyzes the available products to understand what types of items are being discussed (phones, accessories, specific brands, price ranges). This context is included in the prompt to help generate relevant suggestions.
+
+The prompt includes strict rules to prevent generating conversational questions that sound like "Would you like to see more options?" or "What's your budget?". Instead, it focuses on actionable, product-specific queries like "Check available colors" or "Compare similar models".
+
 ### Filtering Rules
-- ❌ **Blocked patterns**: "Would you", "What are your", "What's your", "Do you", "Are you"
-- ✅ **Encouraged patterns**: Imperative commands, product specifications, comparisons
-- 🎯 **Focus areas**: Colors, pricing, alternatives, accessories, specifications
+
+The prompt explicitly blocks certain patterns:
+
+- Questions starting with "Would you", "What are your", "What's your", "Do you", "Are you"
+- Personal preference questions
+- Generic conversational prompts
+- Non-actionable questions
+
+It encourages patterns that focus on:
+
+- Product specifications and features
+- Availability and pricing information
+- Comparisons between options
+- Related products and accessories
+- Customer reviews and ratings
+
+### Fallback Behavior
+
+If the OpenAI call fails or returns invalid JSON, the system has default suggestions to ensure the user experience isn't broken:
+
+- "What colors are available?"
+- "Show me similar products"
+- "Any current deals?"
+- "What accessories do I need?"
+
+These defaults are generic enough to work in most contexts while still being useful.
 
 ---
 
-## Deployment Architecture
+## API Specification
 
-### Production Environment
+### Query Endpoint
+
+**Endpoint:** POST /query
+
+**Request Body:**
+```json
+{
+  "text": "Show me iPhone 15 cases",
+  "website": "example.com"
+}
+```
+
+The text field contains the user's natural language query. The website field provides context about which site the user is on, allowing for site-specific filtering if needed.
+
+**Response Body:**
+```json
+{
+  "response": "I found several iPhone 15 cases for you [1][2]...",
+  "sources": 5,
+  "products": [
+    {
+      "name": "iPhone 15 Pro Clear Case",
+      "price": 79.99,
+      "url": "https://example.com/shop/...",
+      "image": "/images/iphone-case.jpg",
+      "sku": "IP15-CASE-001",
+      "description": "Premium clear protection..."
+    }
+  ],
+  "sourceDetails": [
+    {
+      "index": 1,
+      "title": "iPhone 15 Pro Clear Case",
+      "url": "https://example.com/shop/...",
+      "description": "Premium clear protection...",
+      "host": "example.com"
+    }
+  ],
+  "suggestions": [
+    "Check available colors",
+    "Compare case materials", 
+    "View screen protectors",
+    "Find charging accessories"
+  ]
+}
+```
+
+The response field contains the markdown-formatted AI response with citation numbers in brackets. The sources field indicates how many search results were found. The products array contains structured product data for rendering cards. The sourceDetails array provides information for making references clickable. The suggestions array contains follow-up questions.
+
+### Status Endpoint
+
+**Endpoint:** GET /status
+
+**Response Body:**
+```json
+{
+  "status": "OK",
+  "elasticsearch": {
+    "status": "connected",
+    "cluster_name": "production-cluster",
+    "index": "product-catalog"
+  },
+  "openai": {
+    "status": "connected",
+    "model": "gpt-3.5-turbo"
+  }
+}
+```
+
+This endpoint is useful for health checks and monitoring. It verifies connectivity to both Elasticsearch and OpenAI.
+
+---
+
+## User Interface
+
+### Component Hierarchy
+
+The overlay UI is built from several nested components:
+
+```mermaid
+graph TD
+    ROOT[Chatbot Overlay Container]
+    
+    ROOT --> HEADER[Header Component<br/>Brand + Title]
+    ROOT --> MESSAGES[Messages Container<br/>Scrollable Area]
+    ROOT --> INPUT[Input Component<br/>Text + Send Button]
+    
+    MESSAGES --> MSG_USER[User Message Bubbles]
+    MESSAGES --> MSG_BOT[Bot Message Bubbles]
+    MESSAGES --> PRODUCTS[Product Cards Container]
+    MESSAGES --> REFS[References Section]
+    MESSAGES --> SUGGEST[Suggestions Section]
+    
+    PRODUCTS --> CARD1[Product Card 1]
+    PRODUCTS --> CARD2[Product Card 2]
+    PRODUCTS --> CARDN[Product Card N]
+    
+    REFS --> REF1[Reference Link 1]
+    REFS --> REF2[Reference Link 2]
+    REFS --> REFN[Reference Link N]
+    
+    SUGGEST --> PILL1[Suggestion Pill 1]
+    SUGGEST --> PILL2[Suggestion Pill 2]
+    SUGGEST --> PILLN[Suggestion Pill N]
+    
+    style ROOT fill:#e1f5fe
+    style PRODUCTS fill:#f3e5f5
+    style SUGGEST fill:#e8f5e8
+```
+
+The overlay is a fixed-position container in the bottom-right corner of the page. It contains three main sections: a header with branding, a scrollable messages area, and an input section at the bottom.
+
+Messages can be user bubbles (right-aligned, purple gradient) or bot bubbles (left-aligned, white with border). Bot messages can also include special sections like product cards, references, and suggestions.
+
+Product cards display in a horizontal scroll container, allowing users to swipe through multiple options. Each card shows an image, name, category, price, and a "View Details" button.
+
+References appear in a light gray box with numbered badges. When a reference has a valid URL, it becomes clickable and opens in a new tab.
+
+Suggestions display as pill-shaped buttons in a wrapping grid. Clicking a suggestion automatically submits it as a new query.
+
+### Design Patterns
+
+The UI uses several modern design patterns:
+
+**Gradients:** Purple to violet gradients create visual interest and brand consistency across buttons, headers, and user messages.
+
+**Smooth animations:** Components fade in and slide up when they appear, creating a polished feel. Product cards and suggestion pills have staggered delays so they appear sequentially.
+
+**Hover states:** Interactive elements (buttons, cards, suggestions, references) all have hover effects that provide visual feedback. This includes transforms (lifting elements), shadow changes, and color transitions.
+
+**Scrollable containers:** The main messages area and product card container both scroll independently, with custom styled scrollbars that match the purple theme.
+
+**Responsive sizing:** While the overlay has a fixed width for desktop, the internal layouts use flexbox to adapt to content. Suggestions wrap to multiple rows if needed.
+
+---
+
+## Data Schema
+
+### Elasticsearch Index Structure
+
+The system expects products to be indexed with this general structure:
+
+```json
+{
+  "name": "Product Name",
+  "title": "Page Title",
+  "description": "Product description text",
+  "price": 99.99,
+  "sku": "PROD-001",
+  "url": "https://example.com/product",
+  "url_host": "example.com",
+  "image": "/images/product.jpg",
+  "color": "Blue",
+  "meta_description": "SEO description",
+  "semantic_body": {
+    "inference": {
+      "chunks": [
+        {
+          "text": "Chunk of text content",
+          "embeddings": {
+            /* ELSER sparse vector */
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+The semantic_body field structure is critical for ELSER search to work. The text chunks should be created during indexing by breaking up longer descriptions into meaningful segments. The embeddings are generated automatically by the ELSER model during inference.
+
+---
+
+## Configuration
+
+### Environment Variables
+
+The Flask server requires these environment variables:
+
+```bash
+ELASTIC_CLOUD_ID=your_elastic_cloud_id
+ELASTIC_API_KEY=your_elastic_api_key
+OPENAI_API_KEY=your_openai_api_key
+```
+
+Optional variables allow customization:
+
+```bash
+OPENAI_MODEL=gpt-3.5-turbo
+OPENAI_BASE_URL=https://api.openai.com/v1
+SEARCH_INDEX=product-catalog
+```
+
+The OPENAI_MODEL can be changed to use gpt-4 or other models. The SEARCH_INDEX should match your Elasticsearch index name.
+
+### Extension Configuration
+
+The extension stores its configuration in Chrome's sync storage, which means settings sync across devices for the same user. The background.js file initializes this with a default website list, which can be modified through the popup interface.
+
+Users can add or remove websites by clicking the extension icon and using the configuration popup. The extension checks the current page's hostname against this list to decide whether to inject the overlay.
+
+---
+
+## Security Considerations
+
+### API Security
+
+The Flask server uses CORS to control which domains can make requests. In production, this should be configured to only allow requests from your actual domains rather than allowing all origins.
+
+API keys for Elasticsearch and OpenAI are stored as environment variables and never exposed to the client. The extension doesn't need to know these credentials since all API calls go through the Flask server.
+
+### Input Sanitization
+
+User input is sanitized before rendering to prevent XSS attacks. The overlay.js includes a sanitizeText function that removes HTML tags and encodes special characters. Markdown rendering is done through a controlled parser that only allows specific safe elements.
+
+### Content Security Policy
+
+The extension manifest includes appropriate permissions and host_permissions to minimize security risks. The content script only has access to the DOM of pages that match the configured websites.
+
+---
+
+## Performance
+
+### Optimization Strategies
+
+Several techniques keep the system performant:
+
+**Connection pooling:** The Elasticsearch client maintains persistent connections to reduce latency on repeated queries.
+
+**Lazy loading:** The extension only creates the overlay DOM when needed and progressively renders components as data arrives.
+
+**Debouncing:** While not currently implemented, adding input debouncing would prevent excessive API calls as users type.
+
+**Compressed responses:** The Flask server should be configured with gzip compression for JSON responses, significantly reducing bandwidth usage.
+
+**Caching:** Frequently requested products could be cached server-side with a short TTL to reduce Elasticsearch load.
+
+### Expected Performance
+
+In typical usage, the system should achieve:
+
+- Query response time under 2 seconds from user input to full render
+- UI rendering under 100ms once data is received
+- Extension memory footprint under 50MB
+- Search relevance above 85% for well-formed queries
+
+These numbers depend heavily on Elasticsearch cluster performance and OpenAI API response times.
+
+---
+
+## Deployment
+
+### Production Architecture
+
+A production deployment would typically look like this:
 
 ```mermaid
 graph TB
@@ -424,209 +704,32 @@ graph TB
     style OPENAI_PROD fill:#2196f3
 ```
 
----
+Multiple Flask instances sit behind a load balancer for high availability. All instances connect to the same Elasticsearch cluster and use the same OpenAI API key. Elastic APM provides performance monitoring and distributed tracing.
 
-## Security & Performance
+### Installation Steps
 
-### Security Measures
-- **API Key Management**: Environment variable isolation
-- **CORS Configuration**: Controlled cross-origin access
-- **Input Sanitization**: XSS prevention in message rendering
-- **Rate Limiting**: Configurable request throttling
-- **Content Security Policy**: Extension security headers
+To deploy the backend:
 
-### Performance Optimizations
-- **Connection Pooling**: Persistent Elasticsearch connections
-- **Response Caching**: Smart caching of frequently requested data
-- **Lazy Loading**: Progressive UI component rendering
-- **Debounced Queries**: Prevents excessive API calls
-- **Compressed Responses**: Gzip compression for large payloads
+1. Install Python dependencies from requirements.txt
+2. Set environment variables for Elasticsearch and OpenAI credentials
+3. Verify connectivity with the /status endpoint
+4. Configure the load balancer or reverse proxy
+5. Start Flask with a production WSGI server like Gunicorn
 
----
+To install the extension:
 
-## Installation & Configuration
-
-### Environment Variables
-```bash
-# Required Configuration
-ELASTIC_CLOUD_ID=your_elastic_cloud_id
-ELASTIC_API_KEY=your_elastic_api_key
-OPENAI_API_KEY=your_openai_api_key
-
-# Optional Configuration
-OPENAI_MODEL=gpt-3.5-turbo
-OPENAI_BASE_URL=https://api.openai.com/v1
-SEARCH_INDEX=search-spark-products-all-segments
-```
-
-### Chrome Extension Installation
-1. Load unpacked extension in Chrome Developer Mode
-2. Configure target websites in extension popup
-3. Grant necessary permissions for content script injection
-
-### Backend Deployment
-```bash
-# Install dependencies
-pip install -r requirements.txt
-
-# Set environment variables
-export ELASTIC_CLOUD_ID="your_cloud_id"
-export ELASTIC_API_KEY="your_api_key"
-export OPENAI_API_KEY="your_openai_key"
-
-# Start server
-python server.py
-```
+1. Package the extension files into a directory
+2. Load as an unpacked extension in Chrome Developer Mode for testing
+3. For production, publish to the Chrome Web Store after review
+4. Users install from the store and configure their websites
 
 ---
 
-## Index Schema Requirements
+## Error Handling
 
-### Expected Elasticsearch Index Structure
+### Strategy
 
-```json
-{
-  "mappings": {
-    "properties": {
-      "name": {"type": "text"},
-      "title": {"type": "text"},
-      "description": {"type": "text"},
-      "price": {"type": "float"},
-      "sku": {"type": "keyword"},
-      "url": {"type": "keyword"},
-      "url_host": {"type": "keyword"},
-      "image": {"type": "keyword"},
-      "color": {"type": "keyword"},
-      "meta_description": {"type": "text"},
-      "semantic_body": {
-        "properties": {
-          "inference": {
-            "properties": {
-              "chunks": {
-                "type": "nested",
-                "properties": {
-                  "text": {"type": "text"},
-                  "embeddings": {
-                    "type": "sparse_vector"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
-```
-
----
-
-## User Interface Components
-
-### Component Hierarchy
-
-```mermaid
-graph TD
-    ROOT[Chatbot Overlay Container]
-    
-    ROOT --> HEADER[Header Component<br/>Brand + Title]
-    ROOT --> MESSAGES[Messages Container<br/>Scrollable Area]
-    ROOT --> INPUT[Input Component<br/>Text + Send Button]
-    
-    MESSAGES --> MSG_USER[User Message Bubbles]
-    MESSAGES --> MSG_BOT[Bot Message Bubbles]
-    MESSAGES --> PRODUCTS[Product Cards Container]
-    MESSAGES --> REFS[References Section]
-    MESSAGES --> SUGGEST[Suggestions Section]
-    
-    PRODUCTS --> CARD1[Product Card 1]
-    PRODUCTS --> CARD2[Product Card 2]
-    PRODUCTS --> CARDN[Product Card N]
-    
-    REFS --> REF1[Reference Link 1]
-    REFS --> REF2[Reference Link 2]
-    REFS --> REFN[Reference Link N]
-    
-    SUGGEST --> PILL1[Suggestion Pill 1]
-    SUGGEST --> PILL2[Suggestion Pill 2]
-    SUGGEST --> PILLN[Suggestion Pill N]
-    
-    style ROOT fill:#e1f5fe
-    style PRODUCTS fill:#f3e5f5
-    style SUGGEST fill:#e8f5e8
-```
-
----
-
-## API Integration Details
-
-### OpenAI Integration Pattern
-
-```python
-def generate_smart_suggestions(context, user_question, ai_response, products):
-    """
-    Smart suggestion generation with strict filtering
-    """
-    suggestions_prompt = f"""
-    STRICT RULES for generating suggestions:
-    1. NEVER start with: "Would you", "What are your", "What's your"
-    2. ONLY generate product-focused, actionable questions
-    3. Focus on: specifications, availability, comparisons, pricing
-    
-    Context: {context}
-    User Question: {user_question}
-    AI Response: {ai_response}
-    
-    Generate 3-4 product-focused follow-up questions.
-    """
-    
-    response = openai_client.chat.completions.create(
-        model=OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": "Generate product-focused suggestions only."},
-            {"role": "user", "content": suggestions_prompt}
-        ],
-        temperature=0.8,
-        max_tokens=200
-    )
-    
-    return json.loads(response.choices[0].message.content)
-```
-
-### Elasticsearch Integration Pattern
-
-```python
-def search_semantic_body(query, website=None):
-    """
-    ELSER semantic search implementation
-    """
-    bool_query = {
-        "must": [
-            {
-                "nested": {
-                    "path": "semantic_body.inference.chunks",
-                    "query": {
-                        "sparse_vector": {
-                            "inference_id": ".elser-2-elasticsearch",
-                            "field": "semantic_body.inference.chunks.embeddings",
-                            "query": query
-                        }
-                    },
-                    "inner_hits": {"size": 10, "name": "semantic_body"}
-                }
-            }
-        ]
-    }
-    
-    return es_client.search(index=SEARCH_INDEX, body={"query": {"bool": bool_query}})
-```
-
----
-
-## Error Handling & Monitoring
-
-### Error Handling Strategy
+The system handles errors at multiple levels:
 
 ```mermaid
 graph LR
@@ -664,79 +767,115 @@ graph LR
     style MSG fill:#4caf50
 ```
 
-### Monitoring Endpoints
-- `/status` - System health check
-- `/metrics` - Performance metrics (if APM enabled)
-- Console logging with structured format
+Connection errors trigger retry logic with exponential backoff. If retries fail, a user-friendly error message is displayed rather than crashing.
+
+Authentication errors are logged but not retried, since they indicate a configuration problem that needs manual intervention.
+
+Parsing errors (like invalid JSON from OpenAI) trigger fallback to default suggestions so the user experience isn't completely broken.
+
+Timeouts trigger graceful degradation, where the system might return partial results or cached data if available.
+
+### User-Facing Messages
+
+Error messages are written in plain language rather than exposing technical details:
+
+- "I encountered an error while processing your request. Please try again."
+- "I couldn't find any relevant products for your query. Please try different keywords."
+- "The service is temporarily unavailable. Please try again in a moment."
+
+These messages maintain the conversational tone while clearly indicating something went wrong.
 
 ---
 
-## Customization Guide
+## Customization
 
 ### Adding New Websites
-1. Update `background.js` with additional domains
-2. Configure website-specific search filters
-3. Adjust image domain resolution in `getDomainForImages()`
 
-### Modifying Suggestion Rules
-Update the `generate_smart_suggestions()` function with new filtering rules:
+To support additional websites, update the background.js file to include them in the default configuration:
+
+```javascript
+chrome.storage.sync.set({
+  websites: ['example.com', 'shop.example.com', 'store.example.com']
+});
+```
+
+Users can also add websites through the popup interface without code changes.
+
+### Modifying Suggestion Behavior
+
+The smart suggestions are controlled by the prompt in the generate_smart_suggestions function. To change what types of suggestions are generated, modify the rules and examples in that prompt.
+
+For example, to encourage more comparison questions:
 
 ```python
-# Add new blocked patterns
-blocked_patterns = [
-    "Would you", "What are your", "What's your", 
-    "Do you", "Are you", "How about you"  # Add more patterns
-]
-
-# Add new encouraged patterns
-encouraged_patterns = [
-    "Check", "Compare", "View", "Find", "Show", "Browse"
-]
+Good examples:
+- "Compare X vs Y"
+- "What's the difference between X and Y?"
+- "Show me alternatives to X"
 ```
 
-### Styling Customization
-Key CSS variables for theming:
+To discourage certain topics:
+
+```python
+NEVER ask about:
+- Shipping or delivery times
+- Return policies
+- Payment methods
+```
+
+### Styling Changes
+
+The visual design is controlled entirely by overlay.css. Key variables at the top of the file can be adjusted to change the overall theme:
+
 ```css
-:root {
-  --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  --border-radius: 20px;
-  --shadow-main: 0 20px 40px rgba(0,0,0,0.15);
-  --animation-speed: 0.3s;
-}
+/* Primary gradient used for buttons and header */
+background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+
+/* Main container border radius */
+border-radius: 20px;
+
+/* Shadow depth */
+box-shadow: 0 20px 40px rgba(0,0,0,0.15);
 ```
 
----
-
-## Performance Metrics
-
-### Expected Performance
-- **Query Response Time**: < 2 seconds
-- **UI Rendering**: < 100ms after data received
-- **Memory Usage**: < 50MB extension footprint
-- **Search Accuracy**: > 85% relevant results
-
-### Scalability Considerations
-- **Concurrent Users**: Scales with Flask worker processes
-- **Query Volume**: Limited by OpenAI API rate limits
-- **Search Load**: Elasticsearch Cloud auto-scaling
-- **Extension Distribution**: Chrome Web Store deployment
+Changing these values will update the design system-wide while maintaining consistency.
 
 ---
 
-## Future Enhancements
+## Monitoring and Maintenance
 
-### Planned Features
-1. **Voice Query Support** - Speech-to-text integration
-2. **Multi-language Support** - Internationalization
-3. **Advanced Analytics** - User interaction tracking
-4. **A/B Testing Framework** - Suggestion algorithm optimization
-5. **Personalization Engine** - User preference learning
+### Health Checks
 
-### Technical Debt
-- Migrate to TypeScript for better type safety
-- Implement comprehensive test suite
-- Add Redis caching layer
-- Optimize bundle size for faster loading
+The /status endpoint should be monitored regularly to ensure both Elasticsearch and OpenAI connections are healthy. A monitoring system can poll this endpoint and alert if either service shows as disconnected.
+
+Key metrics to track:
+
+- Average query response time
+- Error rate by endpoint
+- Search result relevance (requires manual evaluation)
+- Suggestion click-through rate
+- Product card conversion rate
+
+### Regular Maintenance
+
+The system requires minimal ongoing maintenance:
+
+**Weekly:** Review error logs to identify any patterns or recurring issues. Check OpenAI API usage to ensure staying within quota limits.
+
+**Monthly:** Update Python dependencies to patch security vulnerabilities. Review search relevance by testing common queries and evaluating result quality.
+
+**Quarterly:** Retrain or update the ELSER model if Elasticsearch releases new versions. Evaluate suggestion quality and adjust prompts if needed. Review and optimize slow queries in Elasticsearch.
+
+### Logging
+
+The Flask application logs all queries, search results, and errors with structured logging. In production, these logs should be shipped to a centralized logging system for analysis.
+
+Key events to log:
+
+- Every query with response time
+- Search failures or empty results
+- OpenAI API errors or rate limits
+- Unusual patterns (same query repeated many times)
 
 ---
 
@@ -744,42 +883,77 @@ Key CSS variables for theming:
 
 ### Common Issues
 
-**Extension Not Loading**
-- Check Chrome Developer Mode is enabled
-- Verify manifest.json permissions
-- Check console for JavaScript errors
+**Extension doesn't appear on the page**
 
-**No Search Results**
-- Verify Elasticsearch connection in `/status`
-- Check index name configuration
-- Validate ELSER model deployment
+Check that the website hostname matches one in the configured list. Open the Chrome DevTools console to look for JavaScript errors. Verify the extension is enabled in chrome://extensions.
 
-**Suggestions Not Generating**
-- Check OpenAI API key validity
-- Monitor rate limiting in logs
-- Verify JSON parsing in response
+**Search returns no results**
 
-**Product Cards Not Displaying**
-- Check image domain configuration
-- Verify product URL format
-- Test network connectivity
+Verify the Elasticsearch connection using the /status endpoint. Check that the SEARCH_INDEX environment variable matches your actual index name. Confirm that ELSER embeddings exist in the semantic_body field.
 
----
+**Suggestions are generic or repetitive**
 
-## Support & Maintenance
+The OpenAI model may need more context to generate good suggestions. Try adjusting the temperature parameter (higher = more creative, lower = more focused). Review the prompt for the suggestions generation to ensure it includes enough product context.
 
-### Monitoring Checklist
-- [ ] Elasticsearch cluster health
-- [ ] OpenAI API quota usage
-- [ ] Extension error rates
-- [ ] Response time metrics
-- [ ] User engagement analytics
+**Product cards not displaying correctly**
 
-### Regular Maintenance
-- **Weekly**: Review error logs and performance metrics
-- **Monthly**: Update dependencies and security patches
-- **Quarterly**: Optimize search relevance and suggestion quality
+Check the image URLs in the Elasticsearch documents. Verify that the getDomainForImages function in overlay.js returns the correct domain for your environment. Test image URLs directly in a browser to ensure they're accessible.
+
+**Slow response times**
+
+Profile the request to identify bottlenecks. Elasticsearch queries typically take 200-500ms, while OpenAI calls can take 1-2 seconds. Consider caching frequently requested products or implementing request queuing to prevent overwhelming the APIs.
 
 ---
 
-*This documentation is designed for software developers and architects implementing or maintaining the RAG Chatbot Overlay system.*
+## Future Enhancements
+
+Several features could enhance the system:
+
+**Voice input:** Adding speech-to-text would allow hands-free queries, particularly useful on mobile devices.
+
+**Multi-language support:** Internationalizing the UI and supporting queries in multiple languages would expand the potential user base.
+
+**Personalization:** Learning user preferences over time and incorporating them into search ranking and suggestions would improve relevance.
+
+**A/B testing framework:** Building infrastructure to test different suggestion strategies or UI designs would enable data-driven optimization.
+
+**Advanced analytics:** Tracking user interactions, conversion rates, and common query patterns would provide insights for improving the product.
+
+**Mobile app:** While currently a Chrome extension, the core functionality could be adapted for native mobile applications.
+
+---
+
+## Technical Dependencies
+
+### Backend Requirements
+
+- Python 3.8 or higher
+- Flask 3.0.0
+- Flask-CORS 4.0.0  
+- Elasticsearch 8.12.0 client library
+- OpenAI 1.52.0 client library
+- python-dotenv 1.0.0
+
+### Frontend Requirements
+
+- Chrome browser (version 88 or higher for Manifest V3 support)
+- No external JavaScript libraries (vanilla JS only)
+- Modern CSS support (flexbox, gradients, animations)
+
+### External Services
+
+- Elasticsearch Cloud with ELSER v2 model deployed
+- OpenAI API access with sufficient quota
+- Domain hosting for the Flask application
+
+---
+
+## Conclusion
+
+This RAG chatbot system provides an intelligent, conversational interface for product discovery on e-commerce websites. By combining semantic search with large language models, it can understand natural language queries and provide helpful, cited responses along with visual product recommendations.
+
+The modular architecture makes it easy to deploy, customize, and maintain. The Chrome extension approach means no changes are required to the underlying website, making integration straightforward.
+
+The smart suggestions feature helps guide users through their shopping journey by anticipating relevant follow-up questions, improving engagement and conversion rates.
+
+With proper configuration and monitoring, this system can handle significant query volume while maintaining fast response times and high relevance.
