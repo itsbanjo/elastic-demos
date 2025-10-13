@@ -1,7 +1,7 @@
 # RAG Chatbot Overlay - Technical Documentation
 
 
-Quick Start Guide (TL;DR)
+# Quick Start Guide (TL;DR)
 Prerequisites
 
 Python 3.8+
@@ -9,7 +9,7 @@ Chrome Browser (Developer Mode enabled)
 Elasticsearch Cloud account with ELSER v2 deployed
 OpenAI API key
 
-1. Configure Backend (5 minutes)
+# 1. Configure Backend (5 minutes)
 bash# Clone/download the project files
 cd rag-chatbot-system
 
