@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Elastic Cloud Terraform Provider — Complete Tutorial</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600&family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e14;
+    --surface: #111720;
+    --surface2: #161e2a;
+    --border: #1e2d3d;
+    --accent: #00b8a9;
+    --accent2: #f0a500;
+    --accent3: #e05252;
+    --text: #cdd9e5;
+    --muted: #637189;
+    --code-bg: #0d1117;
+    --elastic-blue: #00bfb3;
+    --elastic-gold: #fec514;
+    --heading: #e8edf2;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    min-height: 100vh;
+  }
+
+  /* Background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,184,169,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,184,169,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 24px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Header */
+  header {
+    padding: 60px 0 40px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 48px;
+    position: relative;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(0,184,169,0.1);
+    border: 1px solid rgba(0,184,169,0.3);
+    color: var(--accent);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    letter-spacing: 0.05em;
+  }
+
+  .badge::before {
+    content: '◆';
+    font-size: 8px;
+  }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(32px, 5vw, 52px);
+    font-weight: 800;
+    color: var(--heading);
+    line-height: 1.1;
+    margin-bottom: 16px;
+    letter-spacing: -0.02em;
+  }
+
+  h1 span {
+    color: var(--elastic-blue);
+  }
+
+  .subtitle {
+    color: var(--muted);
+    font-size: 16px;
+    max-width: 580px;
+    line-height: 1.6;
+  }
+
+  .meta {
+    display: flex;
+    gap: 20px;
+    margin-top: 24px;
+    flex-wrap: wrap;
+  }
+
+  .meta-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  .meta-item .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  /* TOC */
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 6px;
+    padding: 24px;
+    margin-bottom: 48px;
+  }
+
+  .toc-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    margin-bottom: 16px;
+    font-weight: 700;
+  }
+
+  .toc ol {
+    padding-left: 20px;
+    counter-reset: none;
+    list-style: none;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 24px;
+  }
+
+  .toc li { counter-increment: toc; }
+
+  .toc li::before {
+    content: counter(toc, decimal-leading-zero);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    margin-right: 8px;
+  }
+
+  .toc a {
+    color: var(--text);
+    text-decoration: none;
+    font-size: 13px;
+    transition: color 0.2s;
+  }
+
+  .toc a:hover { color: var(--accent); }
+
+  /* Sections */
+  section {
+    margin-bottom: 56px;
+    scroll-margin-top: 24px;
+  }
+
+  h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--heading);
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  h2 .num {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    background: rgba(0,184,169,0.1);
+    padding: 2px 8px;
+    border-radius: 3px;
+    letter-spacing: 0.05em;
+  }
+
+  h3 {
+    font-family: 'Syne', sans-serif;
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--heading);
+    margin: 28px 0 12px;
+  }
+
+  p { margin-bottom: 16px; color: var(--text); }
+
+  /* Code blocks */
+  .code-block {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin: 20px 0;
+    overflow: hidden;
+  }
+
+  .code-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 16px;
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .code-lang {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+  }
+
+  .code-filename {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  pre {
+    padding: 20px;
+    overflow-x: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    line-height: 1.7;
+  }
+
+  code {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    color: var(--text);
+  }
+
+  /* Syntax highlighting */
+  .kw { color: #c792ea; }   /* keywords */
+  .str { color: #c3e88d; }  /* strings */
+  .cm { color: #546e7a; font-style: italic; }  /* comments */
+  .attr { color: #82aaff; } /* attributes */
+  .val { color: #f78c6c; }  /* values */
+  .fn { color: var(--elastic-blue); } /* function/resource names */
+  .pn { color: var(--elastic-gold); } /* provider names */
+
+  /* Inline code */
+  p code, li code {
+    background: rgba(0,184,169,0.1);
+    border: 1px solid rgba(0,184,169,0.2);
+    color: var(--accent);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-size: 12px;
+  }
+
+  /* Callout boxes */
+  .callout {
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 20px 0;
+    border-left: 3px solid;
+    display: flex;
+    gap: 12px;
+  }
+
+  .callout-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+  .callout-content { flex: 1; }
+  .callout-content strong { display: block; margin-bottom: 4px; font-size: 13px; }
+  .callout-content p { margin: 0; font-size: 14px; }
+
+  .callout.info {
+    background: rgba(0,184,169,0.06);
+    border-color: var(--accent);
+  }
+  .callout.info .callout-icon { color: var(--accent); }
+  .callout.info strong { color: var(--accent); }
+
+  .callout.warning {
+    background: rgba(240,165,0,0.06);
+    border-color: var(--accent2);
+  }
+  .callout.warning .callout-icon { color: var(--accent2); }
+  .callout.warning strong { color: var(--accent2); }
+
+  .callout.danger {
+    background: rgba(224,82,82,0.06);
+    border-color: var(--accent3);
+  }
+  .callout.danger .callout-icon { color: var(--accent3); }
+  .callout.danger strong { color: var(--accent3); }
+
+  /* Cards */
+  .card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin: 20px 0;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    transition: border-color 0.2s;
+  }
+
+  .card:hover { border-color: var(--accent); }
+
+  .card-icon { font-size: 24px; margin-bottom: 10px; }
+  .card-title { font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700; color: var(--heading); margin-bottom: 6px; }
+  .card-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; margin: 20px 0; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left;
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    padding: 10px 16px;
+    border-bottom: 2px solid var(--border);
+    font-weight: 700;
+  }
+  td {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    vertical-align: top;
+  }
+  td code { font-size: 12px; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+
+  /* Steps */
+  .steps { margin: 20px 0; }
+  .step {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+    position: relative;
+  }
+
+  .step::before {
+    content: '';
+    position: absolute;
+    left: 17px;
+    top: 36px;
+    bottom: -8px;
+    width: 1px;
+    background: var(--border);
+  }
+
+  .step:last-child::before { display: none; }
+
+  .step-num {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: rgba(0,184,169,0.1);
+    border: 1px solid rgba(0,184,169,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    flex-shrink: 0;
+    font-weight: 600;
+  }
+
+  .step-content { flex: 1; padding-top: 4px; }
+  .step-title { font-family: 'Syne', sans-serif; font-size: 15px; font-weight: 600; color: var(--heading); margin-bottom: 6px; }
+
+  /* Resource reference */
+  .resource-ref {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin: 12px 0;
+  }
+
+  .resource-ref-name {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--elastic-blue);
+    font-weight: 600;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .resource-ref-name .tag {
+    font-size: 10px;
+    background: rgba(254,197,20,0.1);
+    border: 1px solid rgba(254,197,20,0.3);
+    color: var(--elastic-gold);
+    padding: 1px 6px;
+    border-radius: 3px;
+  }
+
+  .resource-ref-desc { font-size: 13px; color: var(--muted); }
+
+  /* Footer */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 32px 0;
+    margin-top: 60px;
+    text-align: center;
+  }
+
+  footer p { font-size: 12px; color: var(--muted); margin: 0; }
+  footer a { color: var(--accent); text-decoration: none; }
+
+  /* Animations */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  section { animation: fadeIn 0.4s ease backwards; }
+  section:nth-child(1) { animation-delay: 0.1s; }
+  section:nth-child(2) { animation-delay: 0.15s; }
+  section:nth-child(3) { animation-delay: 0.2s; }
+
+  @media (max-width: 640px) {
+    .toc ol { grid-template-columns: 1fr; }
+    .card-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="badge">elastic/ec · Terraform Registry · Latest</div>
+    <h1>Elastic Cloud<br><span>Terraform Provider</span></h1>
+    <p class="subtitle">A complete hands-on guide to provisioning, configuring, and managing Elastic Cloud deployments and Serverless projects as code.</p>
+    <div class="meta">
+      <span class="meta-item"><span class="dot"></span> Provider: elastic/ec</span>
+      <span class="meta-item"><span class="dot"></span> Requires: Terraform ≥ 1.2.7</span>
+      <span class="meta-item"><span class="dot"></span> Supports: ESS · ECE · Serverless</span>
+    </div>
+  </header>
+
+  <div class="toc">
+    <div class="toc-title">Contents</div>
+    <ol>
+      <li><a href="#overview">Overview & Providers</a></li>
+      <li><a href="#prerequisites">Prerequisites</a></li>
+      <li><a href="#setup">Provider Setup & Auth</a></li>
+      <li><a href="#first-deployment">Your First Deployment</a></li>
+      <li><a href="#topology">Topology & Sizing</a></li>
+      <li><a href="#autoscaling">Autoscaling</a></li>
+      <li><a href="#serverless">Serverless Projects</a></li>
+      <li><a href="#traffic-filters">Traffic Filters</a></li>
+      <li><a href="#remote-clusters">Remote Clusters (CCS/CCR)</a></li>
+      <li><a href="#elasticstack">Elastic Stack Provider</a></li>
+      <li><a href="#state-management">State Management & Import</a></li>
+      <li><a href="#reference">Resource Quick Reference</a></li>
+      <li><a href="#appendix">Appendix: Discover Templates via API</a></li>
+    </ol>
+  </div>
+
+  <!-- SECTION 1: OVERVIEW -->
+  <section id="overview">
+    <h2><span class="num">01</span> Overview &amp; Providers</h2>
+
+    <p>Elastic publishes two complementary Terraform providers. Together they give you full Infrastructure-as-Code coverage of both the Elastic Cloud control plane and the Elastic Stack itself.</p>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">☁️</div>
+        <div class="card-title">elastic/ec</div>
+        <div class="card-desc">Manages Elastic Cloud infrastructure — deployments, serverless projects, traffic filters, remote clusters. Talks to the Elastic Cloud API.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔍</div>
+        <div class="card-title">elastic/elasticstack</div>
+        <div class="card-desc">Configures the Elastic Stack itself — index templates, ILM policies, users, roles, ingest pipelines, dashboards. Works on-prem or on cloud.</div>
+      </div>
+    </div>
+
+    <p>This tutorial focuses on <code>elastic/ec</code>. The final section shows how to chain both providers together for end-to-end deployments.</p>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <div class="callout-content">
+        <strong>Supported Environments</strong>
+        <p>The <code>elastic/ec</code> provider supports Elasticsearch Service (ESS), Elastic Cloud Enterprise (ECE), Elasticsearch Service Private (ESSP), and Elastic Serverless projects.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 2: PREREQUISITES -->
+  <section id="prerequisites">
+    <h2><span class="num">02</span> Prerequisites</h2>
+
+    <div class="card-grid">
+      <div class="card">
+        <div class="card-icon">⚙️</div>
+        <div class="card-title">Terraform CLI</div>
+        <div class="card-desc">Version 1.2.7 or higher required. Earlier versions have known bugs with this provider.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🔑</div>
+        <div class="card-title">Elastic Cloud Account</div>
+        <div class="card-desc">An active account at cloud.elastic.co. A free trial is available.</div>
+      </div>
+      <div class="card">
+        <div class="card-icon">🗝️</div>
+        <div class="card-title">API Key</div>
+        <div class="card-desc">An Elastic Cloud organisation-level API key (not a cluster API key).</div>
+      </div>
+    </div>
+
+    <h3>Generating an API Key</h3>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-content">
+          <div class="step-title">Log in to Elastic Cloud</div>
+          <p>Navigate to <code>https://cloud.elastic.co/login</code> and sign in.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-content">
+          <div class="step-title">Open API Keys</div>
+          <p>In the left menu, choose <strong>Features → API keys</strong>. Click <strong>Generate API key</strong>.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-content">
+          <div class="step-title">Copy and export</div>
+          <p>Copy the key immediately — it will not be shown again. Export it as an environment variable:</p>
+          <div class="code-block">
+            <div class="code-header">
+              <span class="code-lang">BASH</span>
+              <span class="code-filename">terminal</span>
+            </div>
+            <pre><code><span class="kw">export</span> <span class="attr">EC_API_KEY</span>=<span class="str">"your-api-key-here"</span></code></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 3: SETUP -->
+  <section id="setup">
+    <h2><span class="num">03</span> Provider Setup &amp; Authentication</h2>
+
+    <p>Create a <code>versions.tf</code> (or <code>provider.tf</code>) file to declare the provider and pin its version.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">versions.tf</span>
+      </div>
+      <pre><code><span class="kw">terraform</span> {
+  <span class="attr">required_version</span> = <span class="str">">= 1.2.7"</span>
+
+  <span class="kw">required_providers</span> {
+    <span class="fn">ec</span> = {
+      <span class="attr">source</span>  = <span class="str">"elastic/ec"</span>
+      <span class="attr">version</span> = <span class="str">"~> 0.11"</span>  <span class="cm"># pin to latest minor</span>
+    }
+  }
+}
+
+<span class="cm"># Provider reads EC_API_KEY from environment automatically</span>
+<span class="kw">provider</span> <span class="str">"ec"</span> {}
+</code></pre>
+    </div>
+
+    <div class="callout warning">
+      <span class="callout-icon">⚠️</span>
+      <div class="callout-content">
+        <strong>Never Hard-Code Credentials</strong>
+        <p>Do not put API keys directly in <code>.tf</code> files. Use the <code>EC_API_KEY</code> environment variable or a secrets manager like Vault.</p>
+      </div>
+    </div>
+
+    <h3>Provider Configuration Options</h3>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Argument</th><th>Type</th><th>Default</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>apikey</code></td><td>String (sensitive)</td><td>—</td><td>API key. Recommended auth method. Can be set via <code>EC_API_KEY</code> env var.</td></tr>
+          <tr><td><code>endpoint</code></td><td>String</td><td>https://api.elastic-cloud.com</td><td>Override for ECE or private installations.</td></tr>
+          <tr><td><code>username</code></td><td>String</td><td>—</td><td>Username for ECE / ESSP (not for public ESS).</td></tr>
+          <tr><td><code>password</code></td><td>String (sensitive)</td><td>—</td><td>Password for ECE / ESSP.</td></tr>
+          <tr><td><code>insecure</code></td><td>Boolean</td><td>false</td><td>Skip TLS validation. Only for internal/dev ECE.</td></tr>
+          <tr><td><code>timeout</code></td><td>String</td><td>1m</td><td>Per-HTTP-call timeout. Increase for large deployments.</td></tr>
+          <tr><td><code>verbose</code></td><td>Boolean</td><td>false</td><td>Write HTTP requests to <code>request.log</code> for debugging.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>ECE / On-Prem Configuration</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">provider.tf (ECE)</span>
+      </div>
+      <pre><code><span class="kw">provider</span> <span class="str">"ec"</span> {
+  <span class="attr">endpoint</span> = <span class="str">"https://ece.mycompany.internal:12443"</span>
+  <span class="attr">apikey</span>   = <span class="kw">var</span>.ec_api_key
+  <span class="attr">insecure</span> = <span class="kw">true</span>  <span class="cm"># only for self-signed certs in dev</span>
+}</code></pre>
+    </div>
+
+    <p>After creating your configuration, run <code>terraform init</code> to download the provider:</p>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">BASH</span>
+      </div>
+      <pre><code>terraform init</code></pre>
+    </div>
+  </section>
+
+  <!-- SECTION 4: FIRST DEPLOYMENT -->
+  <section id="first-deployment">
+    <h2><span class="num">04</span> Your First Deployment</h2>
+
+    <p>The <code>ec_deployment</code> resource creates a full Elastic Stack deployment. The <code>ec_stack</code> data source lets you reference the latest available stack version dynamically.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">main.tf</span>
+      </div>
+      <pre><code><span class="cm"># Look up the latest available stack version for this region</span>
+<span class="kw">data</span> <span class="str">"ec_stack"</span> <span class="str">"latest"</span> {
+  <span class="attr">version_regex</span> = <span class="str">"latest"</span>
+  <span class="attr">region</span>        = <span class="str">"us-east-1"</span>
+}
+
+<span class="cm"># Minimal deployment: Elasticsearch + Kibana only</span>
+<span class="kw">resource</span> <span class="str">"ec_deployment"</span> <span class="fn">"example"</span> {
+  <span class="attr">name</span>                   = <span class="str">"my-first-deployment"</span>
+  <span class="attr">region</span>                 = <span class="str">"us-east-1"</span>
+  <span class="attr">version</span>                = <span class="kw">data</span>.ec_stack.latest.version
+  <span class="attr">deployment_template_id</span> = <span class="str">"aws-io-optimized-v2"</span>
+
+  <span class="attr">elasticsearch</span> = {
+    <span class="attr">hot</span> = {
+      <span class="attr">autoscaling</span> = {}  <span class="cm"># use template defaults</span>
+    }
+  }
+
+  <span class="attr">kibana</span> = {}
+}</code></pre>
+    </div>
+
+    <h3>Key Deployment Arguments</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Argument</th><th>Required</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>region</code></td><td>✅ Yes</td><td>Cloud region. Examples: <code>us-east-1</code>, <code>gcp-europe-west3</code>, <code>azure-eastus</code>. ECE uses <code>ece-region</code>.</td></tr>
+          <tr><td><code>version</code></td><td>✅ Yes</td><td>Elastic Stack version string. Use <code>data.ec_stack.latest.version</code> for auto-latest.</td></tr>
+          <tr><td><code>deployment_template_id</code></td><td>✅ Yes</td><td>Template ID defining hardware profile. See templates below.</td></tr>
+          <tr><td><code>name</code></td><td>No</td><td>Human-readable deployment name.</td></tr>
+          <tr><td><code>alias</code></td><td>No</td><td>Shortname affecting resource URLs. Set <code>""</code> to disable.</td></tr>
+          <tr><td><code>tags</code></td><td>No</td><td>Map of string tags applied to the deployment.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Common Deployment Template IDs</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Template ID</th><th>Cloud</th><th>Use Case</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>aws-io-optimized-v2</code></td><td>AWS</td><td>General purpose — balanced I/O and memory</td></tr>
+          <tr><td><code>aws-storage-optimized-v3</code></td><td>AWS</td><td>Hot-warm logging — high storage density</td></tr>
+          <tr><td><code>aws-cpu-optimized-v2</code></td><td>AWS</td><td>Compute-heavy workloads, ML</td></tr>
+          <tr><td><code>gcp-io-optimized-v2</code></td><td>GCP</td><td>General purpose GCP</td></tr>
+          <tr><td><code>gcp-memory-optimized-v2</code></td><td>GCP</td><td>Memory-intensive search/analytics</td></tr>
+          <tr><td><code>azure-io-optimized-v2</code></td><td>Azure</td><td>General purpose Azure</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Outputs — Capturing Connection Details</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">outputs.tf</span>
+      </div>
+      <pre><code><span class="kw">output</span> <span class="str">"elasticsearch_endpoint"</span> {
+  <span class="attr">value</span> = <span class="kw">ec_deployment</span>.example.elasticsearch.https_endpoint
+}
+
+<span class="kw">output</span> <span class="str">"kibana_endpoint"</span> {
+  <span class="attr">value</span> = <span class="kw">ec_deployment</span>.example.kibana.https_endpoint
+}
+
+<span class="kw">output</span> <span class="str">"elasticsearch_username"</span> {
+  <span class="attr">value</span> = <span class="kw">ec_deployment</span>.example.elasticsearch_username
+}
+
+<span class="kw">output</span> <span class="str">"elasticsearch_password"</span> {
+  <span class="attr">value</span>     = <span class="kw">ec_deployment</span>.example.elasticsearch_password
+  <span class="attr">sensitive</span> = <span class="kw">true</span>
+}</code></pre>
+    </div>
+
+    <p>Apply and retrieve outputs:</p>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">BASH</span></div>
+      <pre><code>terraform apply
+terraform output elasticsearch_endpoint
+terraform output -raw elasticsearch_password</code></pre>
+    </div>
+  </section>
+
+  <!-- SECTION 5: TOPOLOGY -->
+  <section id="topology">
+    <h2><span class="num">05</span> Topology &amp; Sizing</h2>
+
+    <p>From provider v0.6.0 onward, the <code>elasticsearch</code> block uses attribute syntax (<code>= {...}</code> not block syntax) and each data tier is configured separately. Available tiers: <code>hot</code>, <code>warm</code>, <code>cold</code>, <code>frozen</code>, <code>coordinating</code>, <code>ml</code>, <code>master</code>.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">main.tf — hot-warm architecture</span>
+      </div>
+      <pre><code><span class="kw">resource</span> <span class="str">"ec_deployment"</span> <span class="fn">"hot_warm"</span> {
+  <span class="attr">name</span>                   = <span class="str">"hot-warm-logging"</span>
+  <span class="attr">region</span>                 = <span class="str">"us-east-1"</span>
+  <span class="attr">version</span>                = <span class="kw">data</span>.ec_stack.latest.version
+  <span class="attr">deployment_template_id</span> = <span class="str">"aws-storage-optimized-v3"</span>
+
+  <span class="attr">elasticsearch</span> = {
+    <span class="cm"># Hot tier: recent/active data</span>
+    <span class="attr">hot</span> = {
+      <span class="attr">size</span>             = <span class="str">"8g"</span>     <span class="cm"># memory per node</span>
+      <span class="attr">size_resource</span>    = <span class="str">"memory"</span>
+      <span class="attr">zone_count</span>       = <span class="val">2</span>
+      <span class="attr">autoscaling</span>      = {}
+    }
+
+    <span class="cm"># Warm tier: older, less-queried data</span>
+    <span class="attr">warm</span> = {
+      <span class="attr">size</span>          = <span class="str">"4g"</span>
+      <span class="attr">size_resource</span> = <span class="str">"memory"</span>
+      <span class="attr">zone_count</span>    = <span class="val">1</span>
+      <span class="attr">autoscaling</span>   = {}
+    }
+
+    <span class="cm"># Cold tier: archived, infrequent access</span>
+    <span class="attr">cold</span> = {
+      <span class="attr">size</span>          = <span class="str">"2g"</span>
+      <span class="attr">size_resource</span> = <span class="str">"memory"</span>
+      <span class="attr">zone_count</span>    = <span class="val">1</span>
+      <span class="attr">autoscaling</span>   = {}
+    }
+  }
+
+  <span class="attr">kibana</span> = {
+    <span class="attr">topology</span> = {
+      <span class="attr">size</span>       = <span class="str">"2g"</span>
+      <span class="attr">zone_count</span> = <span class="val">1</span>
+    }
+  }
+
+  <span class="attr">integrations_server</span> = {}  <span class="cm"># Fleet/APM for Elastic Stack 8.x+</span>
+}</code></pre>
+    </div>
+
+    <h3>Tier Size Reference</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Size Value</th><th>Memory</th><th>Typical Use</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>"1g"</code></td><td>1 GB</td><td>Dev / testing</td></tr>
+          <tr><td><code>"2g"</code></td><td>2 GB</td><td>Small production, Kibana</td></tr>
+          <tr><td><code>"4g"</code></td><td>4 GB</td><td>Warm/cold tiers, light workloads</td></tr>
+          <tr><td><code>"8g"</code></td><td>8 GB</td><td>Standard hot tier</td></tr>
+          <tr><td><code>"16g"</code></td><td>16 GB</td><td>Heavy search, analytics</td></tr>
+          <tr><td><code>"32g"</code></td><td>32 GB</td><td>Large clusters, ML nodes</td></tr>
+          <tr><td><code>"64g"</code></td><td>64 GB</td><td>Memory-intensive / ML</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <div class="callout-content">
+        <strong>Dedicated Masters</strong>
+        <p>The provider automatically adds a dedicated master tier when the number of data nodes in your cluster exceeds the threshold requiring it, and removes it again when not needed. You can also configure <code>master = { ... }</code> explicitly.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 6: AUTOSCALING -->
+  <section id="autoscaling">
+    <h2><span class="num">06</span> Autoscaling</h2>
+
+    <p>Autoscaling allows Elastic Cloud to dynamically adjust tier capacity based on disk usage and ML demand. Each tier that supports autoscaling requires an <code>autoscaling = {}</code> block. You can optionally set min/max bounds.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">main.tf — autoscaling with bounds</span>
+      </div>
+      <pre><code><span class="kw">resource</span> <span class="str">"ec_deployment"</span> <span class="fn">"autoscaled"</span> {
+  <span class="attr">name</span>                   = <span class="str">"autoscaled-cluster"</span>
+  <span class="attr">region</span>                 = <span class="str">"us-east-1"</span>
+  <span class="attr">version</span>                = <span class="kw">data</span>.ec_stack.latest.version
+  <span class="attr">deployment_template_id</span> = <span class="str">"aws-io-optimized-v2"</span>
+
+  <span class="attr">elasticsearch</span> = {
+    <span class="attr">hot</span> = {
+      <span class="attr">autoscaling</span> = {
+        <span class="attr">autoscale</span>       = <span class="kw">true</span>
+        <span class="attr">min_size</span>        = <span class="str">"8g"</span>
+        <span class="attr">max_size</span>        = <span class="str">"64g"</span>
+        <span class="attr">min_zone_count</span>  = <span class="val">2</span>
+        <span class="attr">max_zone_count</span>  = <span class="val">3</span>
+      }
+    }
+
+    <span class="attr">ml</span> = {
+      <span class="attr">autoscaling</span> = {
+        <span class="attr">autoscale</span> = <span class="kw">true</span>
+        <span class="attr">min_size</span>  = <span class="str">"0g"</span>   <span class="cm"># start at zero when no ML jobs</span>
+        <span class="attr">max_size</span>  = <span class="str">"32g"</span>
+      }
+    }
+  }
+
+  <span class="attr">kibana</span> = {}
+}</code></pre>
+    </div>
+
+    <div class="callout warning">
+      <span class="callout-icon">⚠️</span>
+      <div class="callout-content">
+        <strong>ML Tier Drift</strong>
+        <p>When autoscaling is enabled, all autoscaleable topology elements must be explicitly defined in the <code>elasticsearch</code> block. Omitting the <code>ml</code> block will cause persistent plan diffs.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECTION 7: SERVERLESS -->
+  <section id="serverless">
+    <h2><span class="num">07</span> Serverless Projects</h2>
+
+    <p>The provider supports three Serverless project types, added in recent releases. Serverless projects are fully managed — no topology or sizing to configure.</p>
+
+    <div class="resource-ref">
+      <div class="resource-ref-name"><code>ec_elasticsearch_project</code> <span class="tag">Serverless</span></div>
+      <div class="resource-ref-desc">Serverless Elasticsearch project for search and analytics workloads.</div>
+    </div>
+    <div class="resource-ref">
+      <div class="resource-ref-name"><code>ec_observability_project</code> <span class="tag">Serverless</span></div>
+      <div class="resource-ref-desc">Serverless Observability project for logs, metrics, and APM.</div>
+    </div>
+    <div class="resource-ref">
+      <div class="resource-ref-name"><code>ec_security_project</code> <span class="tag">Serverless</span></div>
+      <div class="resource-ref-desc">Serverless Security project for SIEM and threat detection.</div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">serverless.tf</span>
+      </div>
+      <pre><code><span class="cm"># Serverless Elasticsearch project</span>
+<span class="kw">resource</span> <span class="str">"ec_elasticsearch_project"</span> <span class="fn">"search"</span> {
+  <span class="attr">name</span>       = <span class="str">"my-search-project"</span>
+  <span class="attr">region_id</span>  = <span class="str">"aws-us-east-1"</span>
+}
+
+<span class="cm"># Serverless Observability project</span>
+<span class="kw">resource</span> <span class="str">"ec_observability_project"</span> <span class="fn">"obs"</span> {
+  <span class="attr">name</span>      = <span class="str">"platform-observability"</span>
+  <span class="attr">region_id</span> = <span class="str">"aws-us-east-1"</span>
+}
+
+<span class="cm"># Serverless Security project</span>
+<span class="kw">resource</span> <span class="str">"ec_security_project"</span> <span class="fn">"siem"</span> {
+  <span class="attr">name</span>      = <span class="str">"security-operations"</span>
+  <span class="attr">region_id</span> = <span class="str">"aws-us-east-1"</span>
+}
+
+<span class="cm"># Output the serverless endpoints</span>
+<span class="kw">output</span> <span class="str">"search_endpoint"</span> {
+  <span class="attr">value</span> = <span class="kw">ec_elasticsearch_project</span>.search.endpoints.elasticsearch
+}</code></pre>
+    </div>
+  </section>
+
+  <!-- SECTION 8: TRAFFIC FILTERS -->
+  <section id="traffic-filters">
+    <h2><span class="num">08</span> Traffic Filters</h2>
+
+    <p>Traffic filters restrict inbound access to your deployment to specific IP ranges or VPC endpoints. The provider manages the full set of rules for a deployment — do not mix <code>traffic_filter</code> on <code>ec_deployment</code> with <code>ec_deployment_traffic_filter_association</code> for the same deployment.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">traffic.tf</span>
+      </div>
+      <pre><code><span class="cm"># Define an IP-based traffic filter</span>
+<span class="kw">resource</span> <span class="str">"ec_deployment_traffic_filter"</span> <span class="fn">"office"</span> {
+  <span class="attr">name</span>   = <span class="str">"office-ips"</span>
+  <span class="attr">region</span> = <span class="str">"us-east-1"</span>
+  <span class="attr">type</span>   = <span class="str">"ip"</span>
+
+  <span class="attr">rule</span> = [{
+    <span class="attr">source</span>      = <span class="str">"203.0.113.0/24"</span>
+    <span class="attr">description</span> = <span class="str">"Sydney Office"</span>
+  }, {
+    <span class="attr">source</span>      = <span class="str">"198.51.100.0/24"</span>
+    <span class="attr">description</span> = <span class="str">"Auckland Office"</span>
+  }]
+}
+
+<span class="cm"># Attach the filter to your deployment</span>
+<span class="kw">resource</span> <span class="str">"ec_deployment"</span> <span class="fn">"secure"</span> {
+  <span class="attr">name</span>                   = <span class="str">"filtered-deployment"</span>
+  <span class="attr">region</span>                 = <span class="str">"us-east-1"</span>
+  <span class="attr">version</span>                = <span class="kw">data</span>.ec_stack.latest.version
+  <span class="attr">deployment_template_id</span> = <span class="str">"aws-io-optimized-v2"</span>
+
+  <span class="attr">traffic_filter</span> = [
+    <span class="kw">ec_deployment_traffic_filter</span>.office.id
+  ]
+
+  <span class="attr">elasticsearch</span> = { <span class="attr">hot</span> = { <span class="attr">autoscaling</span> = {} } }
+  <span class="attr">kibana</span>        = {}
+}</code></pre>
+    </div>
+
+    <h3>AWS PrivateLink Traffic Filter</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">privatelink.tf</span>
+      </div>
+      <pre><code><span class="kw">resource</span> <span class="str">"ec_deployment_traffic_filter"</span> <span class="fn">"privatelink"</span> {
+  <span class="attr">name</span>   = <span class="str">"aws-privatelink"</span>
+  <span class="attr">region</span> = <span class="str">"us-east-1"</span>
+  <span class="attr">type</span>   = <span class="str">"vpce"</span>
+
+  <span class="attr">rule</span> = [{
+    <span class="attr">source</span>      = <span class="str">"vpce-0123456789abcdef0"</span>
+    <span class="attr">description</span> = <span class="str">"Production VPC Endpoint"</span>
+  }]
+}</code></pre>
+    </div>
+  </section>
+
+  <!-- SECTION 9: REMOTE CLUSTERS -->
+  <section id="remote-clusters">
+    <h2><span class="num">09</span> Remote Clusters (CCS/CCR)</h2>
+
+    <p>Cross-Cluster Search and Cross-Cluster Replication require setting up remote cluster relationships. You can define these directly on the <code>ec_deployment</code> resource.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">remote_clusters.tf</span>
+      </div>
+      <pre><code><span class="cm"># Primary cluster</span>
+<span class="kw">resource</span> <span class="str">"ec_deployment"</span> <span class="fn">"primary"</span> {
+  <span class="attr">name</span>                   = <span class="str">"primary-cluster"</span>
+  <span class="attr">region</span>                 = <span class="str">"us-east-1"</span>
+  <span class="attr">version</span>                = <span class="kw">data</span>.ec_stack.latest.version
+  <span class="attr">deployment_template_id</span> = <span class="str">"aws-io-optimized-v2"</span>
+  <span class="attr">elasticsearch</span>          = { <span class="attr">hot</span> = { <span class="attr">autoscaling</span> = {} } }
+  <span class="attr">kibana</span>                 = {}
+}
+
+<span class="cm"># Secondary cluster with remote reference to primary</span>
+<span class="kw">resource</span> <span class="str">"ec_deployment"</span> <span class="fn">"secondary"</span> {
+  <span class="attr">name</span>                   = <span class="str">"secondary-cluster"</span>
+  <span class="attr">region</span>                 = <span class="str">"us-east-1"</span>
+  <span class="attr">version</span>                = <span class="kw">data</span>.ec_stack.latest.version
+  <span class="attr">deployment_template_id</span> = <span class="str">"aws-io-optimized-v2"</span>
+
+  <span class="attr">elasticsearch</span> = {
+    <span class="attr">hot</span> = { <span class="attr">autoscaling</span> = {} }
+
+    <span class="attr">remote_cluster</span> = [{
+      <span class="attr">deployment_id</span> = <span class="kw">ec_deployment</span>.primary.id
+      <span class="attr">alias</span>         = <span class="kw">ec_deployment</span>.primary.name
+      <span class="attr">ref_id</span>        = <span class="kw">ec_deployment</span>.primary.elasticsearch.ref_id
+    }]
+  }
+
+  <span class="attr">kibana</span> = {}
+}</code></pre>
+    </div>
+  </section>
+
+  <!-- SECTION 10: ELASTICSTACK PROVIDER -->
+  <section id="elasticstack">
+    <h2><span class="num">10</span> Combining with Elastic Stack Provider</h2>
+
+    <p>The <code>elastic/elasticstack</code> provider configures resources inside an Elasticsearch cluster — index templates, ILM policies, users, ingest pipelines, and more. Chain it with <code>elastic/ec</code> outputs for full end-to-end IaC.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">versions.tf (both providers)</span>
+      </div>
+      <pre><code><span class="kw">terraform</span> {
+  <span class="attr">required_version</span> = <span class="str">">= 1.2.7"</span>
+  <span class="kw">required_providers</span> {
+    <span class="fn">ec</span> = {
+      <span class="attr">source</span>  = <span class="str">"elastic/ec"</span>
+      <span class="attr">version</span> = <span class="str">"~> 0.11"</span>
+    }
+    <span class="pn">elasticstack</span> = {
+      <span class="attr">source</span>  = <span class="str">"elastic/elasticstack"</span>
+      <span class="attr">version</span> = <span class="str">"~> 0.11"</span>
+    }
+  }
+}
+
+<span class="kw">provider</span> <span class="str">"ec"</span> {}
+
+<span class="cm"># Wire the Stack provider using deployment outputs</span>
+<span class="kw">provider</span> <span class="str">"elasticstack"</span> {
+  <span class="attr">elasticsearch</span> {
+    <span class="attr">username</span>  = <span class="kw">ec_deployment</span>.main.elasticsearch_username
+    <span class="attr">password</span>  = <span class="kw">ec_deployment</span>.main.elasticsearch_password
+    <span class="attr">endpoints</span> = [<span class="kw">ec_deployment</span>.main.elasticsearch.https_endpoint]
+  }
+}</code></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">stack_config.tf — ILM + index template</span>
+      </div>
+      <pre><code><span class="cm"># Create an ILM policy via the Stack provider</span>
+<span class="kw">resource</span> <span class="str">"elasticstack_elasticsearch_index_lifecycle"</span> <span class="fn">"logs_policy"</span> {
+  <span class="attr">name</span> = <span class="str">"logs-30-day"</span>
+
+  <span class="attr">hot</span> = {
+    <span class="attr">min_age</span> = <span class="str">"1d"</span>
+    <span class="attr">rollover</span> = {
+      <span class="attr">max_primary_shard_size</span> = <span class="str">"50gb"</span>
+      <span class="attr">max_age</span>                = <span class="str">"7d"</span>
+    }
+  }
+
+  <span class="attr">warm</span> = {
+    <span class="attr">min_age</span>    = <span class="str">"7d"</span>
+    <span class="attr">shrink</span>     = { <span class="attr">number_of_shards</span> = <span class="val">1</span> }
+    <span class="attr">forcemerge</span> = { <span class="attr">max_num_segments</span> = <span class="val">1</span> }
+  }
+
+  <span class="attr">delete</span> = {
+    <span class="attr">min_age</span> = <span class="str">"30d"</span>
+    <span class="attr">delete</span>  = {}
+  }
+}
+
+<span class="cm"># Create a component template</span>
+<span class="kw">resource</span> <span class="str">"elasticstack_elasticsearch_component_template"</span> <span class="fn">"logs_settings"</span> {
+  <span class="attr">name</span> = <span class="str">"logs-settings"</span>
+
+  <span class="attr">template</span> = {
+    <span class="attr">settings</span> = <span class="kw">jsonencode</span>({
+      <span class="attr">index</span> = {
+        <span class="attr">lifecycle</span> = { <span class="attr">name</span> = <span class="str">"logs-30-day"</span> }
+        <span class="attr">number_of_shards</span> = <span class="str">"3"</span>
+      }
+    })
+  }
+}</code></pre>
+    </div>
+  </section>
+
+  <!-- SECTION 11: STATE MANAGEMENT -->
+  <section id="state-management">
+    <h2><span class="num">11</span> State Management &amp; Import</h2>
+
+    <p>If you have existing Elastic Cloud deployments not yet managed by Terraform, you can import them into state using the deployment ID.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">BASH</span>
+        <span class="code-filename">Import existing deployment</span>
+      </div>
+      <pre><code><span class="cm"># Import by deployment ID (found in Elastic Cloud console URL)</span>
+terraform import <span class="str">'ec_deployment.my_deployment'</span> <span class="val">abc123def456</span>
+
+<span class="cm"># After import, run plan to confirm state is clean</span>
+terraform plan</code></pre>
+    </div>
+
+    <div class="callout warning">
+      <span class="callout-icon">⚠️</span>
+      <div class="callout-content">
+        <strong>Import Limitations</strong>
+        <p>State import does not capture user passwords or secret tokens. After import, <code>terraform plan</code> may show changes for empty/zero-size attributes (e.g. cold tier). These can safely be applied — only state is updated, the deployment itself does not change.</p>
+      </div>
+    </div>
+
+    <h3>Remote State (Recommended for Teams)</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">backend.tf — S3 remote state</span>
+      </div>
+      <pre><code><span class="kw">terraform</span> {
+  <span class="attr">backend</span> <span class="str">"s3"</span> {
+    <span class="attr">bucket</span>         = <span class="str">"my-terraform-state"</span>
+    <span class="attr">key</span>            = <span class="str">"elastic/prod/terraform.tfstate"</span>
+    <span class="attr">region</span>         = <span class="str">"us-east-1"</span>
+    <span class="attr">encrypt</span>        = <span class="kw">true</span>
+    <span class="attr">dynamodb_table</span> = <span class="str">"terraform-locks"</span>
+  }
+}</code></pre>
+    </div>
+
+    <h3>Upgrading Versions</h3>
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">main.tf — targeted version upgrade</span>
+      </div>
+      <pre><code><span class="cm"># Pin to a specific version for controlled upgrades</span>
+<span class="kw">resource</span> <span class="str">"ec_deployment"</span> <span class="fn">"prod"</span> {
+  <span class="attr">version</span> = <span class="str">"8.17.0"</span>  <span class="cm"># bump this to trigger upgrade</span>
+  <span class="cm"># ...rest of config</span>
+}</code></pre>
+    </div>
+    <p>Running <code>terraform plan</code> after updating the version string will show a detected change. <code>terraform apply</code> will perform a rolling upgrade.</p>
+  </section>
+
+  <!-- SECTION 12: REFERENCE -->
+  <section id="reference">
+    <h2><span class="num">12</span> Resource Quick Reference</h2>
+
+    <h3>Resources</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Resource</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>ec_deployment</code></td><td>Elastic Cloud hosted deployment (Elasticsearch, Kibana, Fleet, etc.)</td></tr>
+          <tr><td><code>ec_deployment_traffic_filter</code></td><td>IP or VPC traffic filter ruleset</td></tr>
+          <tr><td><code>ec_deployment_traffic_filter_association</code></td><td>Associate an existing filter with a deployment</td></tr>
+          <tr><td><code>ec_elasticsearch_project</code></td><td>Serverless Elasticsearch project</td></tr>
+          <tr><td><code>ec_observability_project</code></td><td>Serverless Observability project</td></tr>
+          <tr><td><code>ec_security_project</code></td><td>Serverless Security project</td></tr>
+          <tr><td><code>ec_snapshot_repository</code></td><td>Snapshot repository (ECE only)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Data Sources</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Data Source</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>ec_stack</code></td><td>Look up available stack versions by region and regex</td></tr>
+          <tr><td><code>ec_deployment</code></td><td>Read an existing deployment by ID or alias</td></tr>
+          <tr><td><code>ec_deployments</code></td><td>Search/filter multiple deployments</td></tr>
+          <tr><td><code>ec_traffic_filter</code></td><td>Read existing traffic filters</td></tr>
+          <tr><td><code>ec_aws_privatelink_endpoint</code></td><td>AWS PrivateLink endpoint details by region</td></tr>
+          <tr><td><code>ec_azure_privatelink_endpoint</code></td><td>Azure Private Link endpoint details by region</td></tr>
+          <tr><td><code>ec_gcp_private_service_connect_endpoint</code></td><td>GCP PSC endpoint details by region</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Useful Commands</h3>
+    <div class="code-block">
+      <div class="code-header"><span class="code-lang">BASH</span></div>
+      <pre><code><span class="cm"># Initialise / download providers</span>
+terraform init
+
+<span class="cm"># Preview changes without applying</span>
+terraform plan
+
+<span class="cm"># Apply changes</span>
+terraform apply
+
+<span class="cm"># Apply without interactive prompt</span>
+terraform apply -auto-approve
+
+<span class="cm"># Destroy all managed resources</span>
+terraform destroy
+
+<span class="cm"># Enable provider debug logging</span>
+<span class="kw">TF_LOG</span>=DEBUG terraform apply <span class="val">2>&1</span> | tee tf.log
+
+<span class="cm"># Enable provider verbose HTTP logging (request.log)</span>
+<span class="cm"># Set verbose = true in provider block</span>
+terraform apply</code></pre>
+    </div>
+  </section>
+
+  <!-- APPENDIX: DISCOVER TEMPLATES VIA API -->
+  <section id="appendix">
+    <h2><span class="num">A</span> Appendix: Discover Templates &amp; Instance Configs via API</h2>
+
+    <p>Template IDs and instance configuration IDs change between Elastic Cloud versions and cloud providers. Rather than guessing from docs, always query the live API for the exact values valid in your region. The commands below work for any hyperscaler (AWS, Azure, GCP) and any region.</p>
+
+    <div class="callout danger">
+      <span class="callout-icon">🚨</span>
+      <div class="callout-content">
+        <strong>Why This Matters</strong>
+        <p>The Elastic Cloud API marks older templates with <code>"legacy": "true"</code> in their metadata. Terraform will accept these values at plan time but fail at apply time with <code>deployments.elasticsearch_using_legacy_dt</code> errors. Always filter for non-legacy templates before writing your config.</p>
+      </div>
+    </div>
+
+    <h3>Step 1 — List All Valid (Non-Legacy) Templates for a Region</h3>
+
+    <p>Replace <code>REGION</code> with your target region code (e.g. <code>azure-australiaeast</code>, <code>us-east-1</code>, <code>gcp-europe-west3</code>).</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">BASH</span>
+        <span class="code-filename">Step 1 — list non-legacy templates</span>
+      </div>
+      <pre><code><span class="kw">export</span> <span class="attr">REGION</span>=<span class="str">"azure-australiaeast"</span>   <span class="cm"># ← change this</span>
+
+curl -s -H <span class="str">"Authorization: ApiKey $EC_API_KEY"</span> \
+  <span class="str">"https://api.elastic-cloud.com/api/v1/deployments/templates?region=$REGION"</span> \
+  | jq <span class="str">'[.[] | select(.metadata != null)
+    | select((.metadata
+        | map(select(.key == "legacy" and .value == "true")))
+        | length == 0)
+    | {id: .id, name: .name}]'</span></code></pre>
+    </div>
+
+    <p>Example output for <code>azure-australiaeast</code>:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">JSON</span>
+        <span class="code-filename">sample output</span>
+      </div>
+      <pre><code>[
+  { <span class="attr">"id"</span>: <span class="str">"azure-storage-optimized"</span>,      <span class="attr">"name"</span>: <span class="str">"Storage optimized"</span> },
+  { <span class="attr">"id"</span>: <span class="str">"azure-cpu-optimized"</span>,          <span class="attr">"name"</span>: <span class="str">"CPU optimized"</span> },
+  { <span class="attr">"id"</span>: <span class="str">"azure-vector-search-optimized"</span>, <span class="attr">"name"</span>: <span class="str">"Vector Search optimized"</span> },
+  { <span class="attr">"id"</span>: <span class="str">"azure-general-purpose"</span>,        <span class="attr">"name"</span>: <span class="str">"General purpose"</span> }
+]</code></pre>
+    </div>
+
+    <h3>Step 2 — Inspect a Specific Template's Instance Configs</h3>
+
+    <p>Once you've chosen a template ID from Step 1, pull its full definition to get the exact <code>instance_configuration_id</code> for each tier.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">BASH</span>
+        <span class="code-filename">Step 2 — get instance config IDs per tier</span>
+      </div>
+      <pre><code><span class="kw">export</span> <span class="attr">REGION</span>=<span class="str">"azure-australiaeast"</span>
+<span class="kw">export</span> <span class="attr">TEMPLATE_ID</span>=<span class="str">"azure-general-purpose"</span>  <span class="cm"># ← from Step 1</span>
+
+curl -s -H <span class="str">"Authorization: ApiKey $EC_API_KEY"</span> \
+  <span class="str">"https://api.elastic-cloud.com/api/v1/deployments/templates?region=$REGION"</span> \
+  | jq <span class="str">--arg t "$TEMPLATE_ID" \
+    '.[] | select(.id == $t)
+    | .instance_configurations[]
+    | {id: .id, type: .instance_type, node_types: .node_types, sizes: .discrete_sizes.sizes}'</span></code></pre>
+    </div>
+
+    <p>Example output — each object maps directly to a Terraform <code>instance_configuration_id</code> value:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">JSON</span>
+        <span class="code-filename">sample output — azure-general-purpose</span>
+      </div>
+      <pre><code>{ <span class="attr">"id"</span>: <span class="str">"azure.es.datahot.ddv4"</span>,       <span class="attr">"type"</span>: <span class="str">"elasticsearch"</span>, <span class="attr">"node_types"</span>: [<span class="str">"master"</span>,<span class="str">"data"</span>,<span class="str">"ingest"</span>], <span class="attr">"sizes"</span>: [<span class="val">1024</span>,<span class="val">2048</span>,<span class="val">4096</span>,<span class="val">8192</span>,<span class="val">15360</span>,<span class="val">30720</span>,<span class="val">61440</span>] }
+{ <span class="attr">"id"</span>: <span class="str">"azure.es.datawarm.edsv4"</span>,      <span class="attr">"type"</span>: <span class="str">"elasticsearch"</span>, <span class="attr">"node_types"</span>: [<span class="str">"data"</span>],                    <span class="attr">"sizes"</span>: [<span class="val">2048</span>,<span class="val">4096</span>,<span class="val">8192</span>,<span class="val">15360</span>,<span class="val">30720</span>,<span class="val">61440</span>] }
+{ <span class="attr">"id"</span>: <span class="str">"azure.es.datacold.edsv4"</span>,      <span class="attr">"type"</span>: <span class="str">"elasticsearch"</span>, <span class="attr">"node_types"</span>: [<span class="str">"data"</span>],                    <span class="attr">"sizes"</span>: [<span class="val">2048</span>,<span class="val">4096</span>,<span class="val">8192</span>,<span class="val">15360</span>,<span class="val">30720</span>,<span class="val">61440</span>] }
+{ <span class="attr">"id"</span>: <span class="str">"azure.es.datafrozen.edsv4"</span>,    <span class="attr">"type"</span>: <span class="str">"elasticsearch"</span>, <span class="attr">"node_types"</span>: [<span class="str">"data"</span>],                    <span class="attr">"sizes"</span>: [<span class="val">4096</span>,<span class="val">8192</span>,<span class="val">15360</span>,<span class="val">30720</span>,<span class="val">61440</span>] }
+{ <span class="attr">"id"</span>: <span class="str">"azure.es.master.fsv2"</span>,         <span class="attr">"type"</span>: <span class="str">"elasticsearch"</span>, <span class="attr">"node_types"</span>: [<span class="str">"master"</span>],                  <span class="attr">"sizes"</span>: [<span class="val">1024</span>,<span class="val">2048</span>,<span class="val">4096</span>,<span class="val">8192</span>,<span class="val">15360</span>,<span class="val">30720</span>,<span class="val">61440</span>] }
+{ <span class="attr">"id"</span>: <span class="str">"azure.es.ml.fsv2"</span>,             <span class="attr">"type"</span>: <span class="str">"elasticsearch"</span>, <span class="attr">"node_types"</span>: [<span class="str">"ml"</span>],                      <span class="attr">"sizes"</span>: [<span class="val">1024</span>,<span class="val">2048</span>,<span class="val">4096</span>,<span class="val">8192</span>,<span class="val">15360</span>,<span class="val">30720</span>,<span class="val">61440</span>] }
+{ <span class="attr">"id"</span>: <span class="str">"azure.kibana.fsv2"</span>,            <span class="attr">"type"</span>: <span class="str">"kibana"</span>,         <span class="attr">"node_types"</span>: null,                        <span class="attr">"sizes"</span>: [<span class="val">1024</span>,<span class="val">2048</span>,<span class="val">4096</span>,<span class="val">8192</span>] }
+{ <span class="attr">"id"</span>: <span class="str">"azure.integrationsserver.fsv2"</span>, <span class="attr">"type"</span>: <span class="str">"integrations_server"</span>, <span class="attr">"node_types"</span>: null,                    <span class="attr">"sizes"</span>: [<span class="val">1024</span>,<span class="val">2048</span>,<span class="val">4096</span>,<span class="val">8192</span>,<span class="val">15360</span>,<span class="val">30720</span>] }</code></pre>
+    </div>
+
+    <h3>Step 3 — Region Codes Quick Reference</h3>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Provider</th><th>Region</th><th>Region Code</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>☁️ AWS</td><td>US East (N. Virginia)</td><td><code>us-east-1</code></td></tr>
+          <tr><td>☁️ AWS</td><td>US West (Oregon)</td><td><code>us-west-2</code></td></tr>
+          <tr><td>☁️ AWS</td><td>Asia Pacific (Sydney)</td><td><code>ap-southeast-2</code></td></tr>
+          <tr><td>☁️ AWS</td><td>Asia Pacific (Singapore)</td><td><code>ap-southeast-1</code></td></tr>
+          <tr><td>🔷 Azure</td><td>Australia East (NSW)</td><td><code>azure-australiaeast</code></td></tr>
+          <tr><td>🔷 Azure</td><td>East US</td><td><code>azure-eastus</code></td></tr>
+          <tr><td>🔷 Azure</td><td>West Europe</td><td><code>azure-westeurope</code></td></tr>
+          <tr><td>🔷 Azure</td><td>Southeast Asia</td><td><code>azure-southeastasia</code></td></tr>
+          <tr><td>🌐 GCP</td><td>US Central (Iowa)</td><td><code>gcp-us-central1</code></td></tr>
+          <tr><td>🌐 GCP</td><td>Europe West (Frankfurt)</td><td><code>gcp-europe-west3</code></td></tr>
+          <tr><td>🌐 GCP</td><td>Asia East (Taiwan)</td><td><code>gcp-asia-east1</code></td></tr>
+          <tr><td>🌐 GCP</td><td>Australia Southeast</td><td><code>gcp-australia-southeast1</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>Step 4 — Generic Terraform Template</h3>
+
+    <p>Use the values from Steps 1–2 to fill in this generic template. Works for any hyperscaler and any deployment type — just swap the region, template ID, and instance config IDs.</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">HCL</span>
+        <span class="code-filename">main.tf — generic template</span>
+      </div>
+      <pre><code><span class="cm"># ── Variables ──────────────────────────────────────────────────────────────
+# Set these based on output from the API discovery commands above</span>
+
+<span class="kw">locals</span> {
+  region      = <span class="str">"azure-australiaeast"</span>  <span class="cm"># ← Step 3 region code</span>
+  template_id = <span class="str">"azure-general-purpose"</span> <span class="cm"># ← Step 1 non-legacy template id</span>
+
+  <span class="cm"># Instance config IDs from Step 2</span>
+  ic_hot    = <span class="str">"azure.es.datahot.ddv4"</span>
+  ic_kibana = <span class="str">"azure.kibana.fsv2"</span>
+  ic_fleet  = <span class="str">"azure.integrationsserver.fsv2"</span>
+}
+
+<span class="cm"># ── Stack version data source ───────────────────────────────────────────────</span>
+<span class="kw">data</span> <span class="str">"ec_stack"</span> <span class="str">"latest"</span> {
+  <span class="attr">version_regex</span> = <span class="str">"latest"</span>
+  <span class="attr">region</span>        = <span class="kw">local</span>.region
+}
+
+<span class="cm"># ── Deployment ──────────────────────────────────────────────────────────────</span>
+<span class="kw">resource</span> <span class="str">"ec_deployment"</span> <span class="fn">"main"</span> {
+  <span class="attr">name</span>                   = <span class="str">"my-deployment"</span>
+  <span class="attr">region</span>                 = <span class="kw">local</span>.region
+  <span class="attr">version</span>                = <span class="kw">data</span>.ec_stack.latest.version
+  <span class="attr">deployment_template_id</span> = <span class="kw">local</span>.template_id
+
+  <span class="attr">elasticsearch</span> = {
+    <span class="attr">hot</span> = {
+      <span class="attr">instance_configuration_id</span> = <span class="kw">local</span>.ic_hot
+      <span class="attr">size</span>                      = <span class="str">"8g"</span>
+      <span class="attr">size_resource</span>             = <span class="str">"memory"</span>
+      <span class="attr">zone_count</span>                = <span class="val">2</span>
+      <span class="attr">autoscaling</span>               = {}
+    }
+  }
+
+  <span class="attr">kibana</span> = {
+    <span class="attr">instance_configuration_id</span> = <span class="kw">local</span>.ic_kibana
+    <span class="attr">topology</span> = {
+      <span class="attr">size</span>          = <span class="str">"1g"</span>
+      <span class="attr">size_resource</span> = <span class="str">"memory"</span>
+      <span class="attr">zone_count</span>    = <span class="val">1</span>
+    }
+  }
+
+  <span class="attr">integrations_server</span> = {
+    <span class="attr">instance_configuration_id</span> = <span class="kw">local</span>.ic_fleet
+    <span class="attr">topology</span> = {
+      <span class="attr">size</span>          = <span class="str">"1g"</span>
+      <span class="attr">size_resource</span> = <span class="str">"memory"</span>
+      <span class="attr">zone_count</span>    = <span class="val">1</span>
+    }
+  }
+}
+
+<span class="cm"># ── Outputs ─────────────────────────────────────────────────────────────────</span>
+<span class="kw">output</span> <span class="str">"elasticsearch_endpoint"</span> {
+  <span class="attr">value</span> = <span class="kw">ec_deployment</span>.main.elasticsearch.https_endpoint
+}
+
+<span class="kw">output</span> <span class="str">"kibana_endpoint"</span> {
+  <span class="attr">value</span> = <span class="kw">ec_deployment</span>.main.kibana.https_endpoint
+}
+
+<span class="kw">output</span> <span class="str">"elasticsearch_username"</span> {
+  <span class="attr">value</span> = <span class="kw">ec_deployment</span>.main.elasticsearch_username
+}
+
+<span class="kw">output</span> <span class="str">"elasticsearch_password"</span> {
+  <span class="attr">value</span>     = <span class="kw">ec_deployment</span>.main.elasticsearch_password
+  <span class="attr">sensitive</span> = <span class="kw">true</span>
+}</code></pre>
+    </div>
+
+    <h3>One-Shot Discovery Script</h3>
+
+    <p>Save this as <code>discover.sh</code> to interactively browse any region and template in one go:</p>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">BASH</span>
+        <span class="code-filename">discover.sh</span>
+      </div>
+      <pre><code><span class="cm">#!/bin/bash
+# Usage: EC_API_KEY=your-key ./discover.sh azure-australiaeast azure-general-purpose
+# Arg 1: region code   Arg 2: template id (optional, lists all if omitted)</span>
+
+<span class="attr">REGION</span>=<span class="str">${1:?"Usage: $0 <region> [template_id]"}</span>
+<span class="attr">TEMPLATE</span>=<span class="str">${2:-}</span>
+<span class="attr">BASE_URL</span>=<span class="str">"https://api.elastic-cloud.com/api/v1/deployments/templates?region=$REGION"</span>
+
+<span class="kw">if</span> [ -z <span class="str">"$TEMPLATE"</span> ]; then
+  <span class="cm"># List all non-legacy templates</span>
+  echo <span class="str">"=== Non-legacy templates for $REGION ==="</span>
+  curl -s -H <span class="str">"Authorization: ApiKey $EC_API_KEY"</span> <span class="str">"$BASE_URL"</span> \
+    | jq <span class="str">'[.[] | select(.metadata != null)
+      | select((.metadata | map(select(.key=="legacy" and .value=="true"))) | length == 0)
+      | {id: .id, name: .name}]'</span>
+<span class="kw">else</span>
+  <span class="cm"># Show instance configs for specific template</span>
+  echo <span class="str">"=== Instance configs for $TEMPLATE in $REGION ==="</span>
+  curl -s -H <span class="str">"Authorization: ApiKey $EC_API_KEY"</span> <span class="str">"$BASE_URL"</span> \
+    | jq <span class="str">--arg t "$TEMPLATE" \
+      '.[] | select(.id == $t)
+      | .instance_configurations[]
+      | {id: .id, type: .instance_type, node_types: .node_types, sizes: .discrete_sizes.sizes}'</span>
+<span class="kw">fi</span></code></pre>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header">
+        <span class="code-lang">BASH</span>
+        <span class="code-filename">usage examples</span>
+      </div>
+      <pre><code>chmod +x discover.sh
+
+<span class="cm"># List all valid templates for Azure Australia East</span>
+EC_API_KEY=$EC_API_KEY ./discover.sh azure-australiaeast
+
+<span class="cm"># Get instance configs for a specific template</span>
+EC_API_KEY=$EC_API_KEY ./discover.sh azure-australiaeast azure-general-purpose
+
+<span class="cm"># AWS Sydney</span>
+EC_API_KEY=$EC_API_KEY ./discover.sh ap-southeast-2
+
+<span class="cm"># GCP Frankfurt</span>
+EC_API_KEY=$EC_API_KEY ./discover.sh gcp-europe-west3</code></pre>
+    </div>
+
+    <div class="callout info">
+      <span class="callout-icon">ℹ️</span>
+      <div class="callout-content">
+        <strong>Make This Part of Your CI Pipeline</strong>
+        <p>Run the discovery commands as a pre-flight check before <code>terraform plan</code> in your CI pipeline. If a template ID disappears from the non-legacy list, your pipeline will catch it before Terraform attempts a failing apply.</p>
+      </div>
+    </div>
+
+  </section>
+
+  <footer>
+    <p>Built from <a href="https://registry.terraform.io/providers/elastic/ec/latest/docs" target="_blank">registry.terraform.io/providers/elastic/ec/latest/docs</a> · <a href="https://github.com/elastic/terraform-provider-ec" target="_blank">GitHub: elastic/terraform-provider-ec</a></p>
+  </footer>
+
+</div>
+</body>
+</html>
