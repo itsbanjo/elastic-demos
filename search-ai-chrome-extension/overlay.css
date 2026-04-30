@@ -332,6 +332,55 @@
   font-weight: 700;
   color: #2c3e50;
   margin-bottom: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.price-monthly {
+  font-size: 10px;
+  font-weight: 400;
+  color: #6c757d;
+}
+
+.price-monthly-only {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+/* Colour swatch row — variant switcher */
+.color-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+
+.color-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.color-swatch:hover {
+  transform: scale(1.25);
+}
+
+.color-swatch.swatch-active {
+  border-color: #667eea;
+  transform: scale(1.15);
+  box-shadow: 0 0 0 1px white inset;
+}
+
+/* Colour hex fallback placeholder — fills image area with the variant colour */
+.product-image .placeholder.color-fallback {
+  background: #ccc; /* overridden inline by JS */
+  border-radius: 0;
 }
 
 .product-cta {

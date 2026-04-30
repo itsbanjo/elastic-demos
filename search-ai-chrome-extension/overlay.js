@@ -1,4 +1,4 @@
-// overlay.js - Enhanced with smart query suggestions
+// overlay.js - Updated for spark_products index schema
 
 // Simple markdown parser to avoid external library issues
 function parseMarkdown(text) {
@@ -102,7 +102,7 @@ function createChatbotOverlay() {
   let currentReferenceSources = [];
 
   // Add welcome message
-  addMessage('bot', 'Hi! I\'m your product assistant. Ask me anything about our products and I\'ll help you find what you\'re looking for! 🛍️', false);
+  addMessage('bot', 'Hi! I\'m your Spark product assistant. Ask me about phones, plans, or accessories! 📱', false);
 
   // Event handlers
   function handleSend() {
@@ -161,7 +161,7 @@ function createChatbotOverlay() {
     
     // Add the markdown-rendered conversational response
     if (response && response.trim()) {
-      addMessage('bot', response, true); // true = render as markdown
+      addMessage('bot', response, true);
     }
     
     // Add product cards if available
@@ -169,19 +169,14 @@ function createChatbotOverlay() {
       addProductCards(products);
     }
     
-    // Add references section
-   // const references = extractReferences(response, sourcesCount, sourceDetails);
-   // if (references.length > 0) {
-   //   addReferencesSection(references);
-   // }
-    
-    // Add smart suggestions section - NEW!
+    // Add smart suggestions section
     if (suggestions && suggestions.length > 0) {
       addSuggestionsSection(suggestions);
     }
   }
 
   // Extract citation references from response text with actual source data
+  // (kept for future use if references section is re-enabled)
   function extractReferences(text, sourcesCount, sourceDetails = []) {
     const references = [];
     if (!text) return references;
@@ -194,7 +189,6 @@ function createChatbotOverlay() {
       ))].sort((a, b) => a - b);
       
       citationNumbers.forEach(num => {
-        // Try to find actual source details from the server response
         const sourceDetail = sourceDetails.find(s => s.index === num);
         
         references.push({
@@ -231,10 +225,9 @@ function createChatbotOverlay() {
     
     messageElement.appendChild(bubble);
     messagesContainer.appendChild(messageElement);
-    // messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
 
-  // Add product cards carousel
+  // Add product cards carousel — structure unchanged, card internals updated
   function addProductCards(products) {
     const productsContainer = document.createElement('div');
     productsContainer.className = 'products-container';
@@ -242,116 +235,191 @@ function createChatbotOverlay() {
     const scrollContainer = document.createElement('div');
     scrollContainer.className = 'products-scroll';
     
-    // Add all product cards to scroll container
     products.forEach((product, index) => {
       const card = createProductCard(product, index);
       scrollContainer.appendChild(card);
     });
     
-    // Add scroll container to products container
     productsContainer.appendChild(scrollContainer);
     
-    // Now create the message element and add the complete products container
     const messageElement = document.createElement('div');
     messageElement.className = 'message bot';
     messageElement.appendChild(productsContainer);
     
-    // Add to messages container
     messagesContainer.appendChild(messageElement);
-    // messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
 
-  // Create individual product card
+  // ---------------------------------------------------------------------------
+  // createProductCard — updated for spark_products schema
+  //
+  // Field mapping (old → new):
+  //   product.name        → product.product_name
+  //   product.image       → product.primary_image_url  (already a full CDN URL)
+  //   product.price       → product.pricing.upfront / product.pricing.min_monthly
+  //   product.color       → product.colors[].color_name (array, drives swatches)
+  //   extractCategory()   → product.brand  (direct field, no description sniffing)
+  //   getDomainForImages  → removed (URL is already absolute)
+  //
+  // New: colour swatch row — clicking a swatch swaps the card image to
+  //      that variant's gallery_urls[0] (or primary_image_url as fallback).
+  // ---------------------------------------------------------------------------
   function createProductCard(product, index) {
     const card = document.createElement('div');
     card.className = 'product-card';
     card.style.animationDelay = `${index * 0.1}s`;
-    
-    const domain = getDomainForImages();
-    const imageUrl = product.image ? `${domain}${product.image}` : null;
-    const formattedPrice = formatPrice(product.price);
-    const cleanName = sanitizeText(product.name);
-    const category = extractCategory(product);
-    
+
+    // --- Field resolution ---
+    const cleanName   = sanitizeText(product.product_name || product.name || 'Unknown Product');
+    const imageUrl    = product.primary_image_url || null;
+    const brand       = sanitizeText(product.brand || '');
+    const storage     = sanitizeText(product.storage || '');
+    const colors      = Array.isArray(product.colors) ? product.colors : [];
+
+    // Prefer upfront price; fall back to monthly if upfront is absent
+    const pricing     = product.pricing || {};
+    const upfront     = pricing.upfront != null ? pricing.upfront : null;
+    const monthly     = pricing.min_monthly != null ? pricing.min_monthly : null;
+    const priceHtml   = buildPriceHtml(upfront, monthly);
+
+    // Badge line: brand and/or storage
+    const badgeParts  = [brand, storage].filter(Boolean);
+    const badgeHtml   = badgeParts.length
+      ? `<div class="product-category">${badgeParts.join(' · ')}</div>`
+      : '';
+
+    // Build swatch HTML — rendered into card, wired up after innerHTML set
+    const swatchHtml  = colors.length > 1
+      ? `<div class="color-swatches">${
+          colors.slice(0, 6).map((c, i) =>
+            `<div class="color-swatch${i === 0 ? ' swatch-active' : ''}"
+               style="background:${sanitizeText(c.color_hex || '#ccc')}"
+               title="${sanitizeText(c.color_name || '')}"
+               data-swatch-index="${i}"></div>`
+          ).join('')
+        }</div>`
+      : '';
+
     card.innerHTML = `
       <div class="product-image">
-        ${imageUrl ? 
-          `<img src="${imageUrl}" alt="${cleanName}">` :
-          '<div class="placeholder">📦</div>'
+        ${imageUrl
+          ? `<img src="${imageUrl}" alt="${cleanName}">`
+          : '<div class="placeholder">📦</div>'
         }
       </div>
       <div class="product-info">
         <div class="product-name">${cleanName}</div>
-        ${category ? `<div class="product-category">${category}</div>` : ''}
-        ${formattedPrice ? `<div class="product-price">$ ${formattedPrice}</div>` : ''}
+        ${badgeHtml}
+        ${priceHtml}
+        ${swatchHtml}
         <button class="product-cta">View Details</button>
       </div>
     `;
-    
-    // Add click handler for CTA button
+
+    // --- Wire up swatch clicks ---
+    // Clicking a swatch swaps the <img> src to that variant's first gallery image,
+    // or falls back to primary_image_url if gallery_urls is empty.
+    if (colors.length > 1) {
+      const imgEl    = card.querySelector('img');
+      const swatches = card.querySelectorAll('.color-swatch');
+
+      swatches.forEach((swatch, i) => {
+        swatch.addEventListener('click', () => {
+          // Update active state
+          swatches.forEach(s => s.classList.remove('swatch-active'));
+          swatch.classList.add('swatch-active');
+
+          // Swap image if we have an img element to swap
+          if (imgEl && colors[i]) {
+            const variant    = colors[i];
+            const variantImg = (variant.gallery_urls && variant.gallery_urls[0])
+              || variant.primary_image_url
+              || imageUrl;
+
+            if (variantImg) {
+              imgEl.src = variantImg;
+            }
+          }
+        });
+      });
+    }
+
+    // --- View Details CTA ---
     const ctaButton = card.querySelector('.product-cta');
     ctaButton.addEventListener('click', () => {
-      if (product.url) {
-        window.open(product.url, '_blank');
+      if (product.url || product.source_url) {
+        window.open(product.url || product.source_url, '_blank');
       }
     });
-    
-    // Handle image error
+
+    // --- Image load error fallback ---
     const img = card.querySelector('img');
     if (img) {
       img.addEventListener('error', function() {
-        this.parentElement.innerHTML = '<div class="placeholder">📦</div>';
+        // If a color_hex is available for the active variant, show a colour circle
+        // instead of a generic box icon, so the swatch context isn't lost
+        const activeColor = colors[0];
+        if (activeColor && activeColor.color_hex) {
+          this.parentElement.innerHTML = `
+            <div class="placeholder color-fallback"
+                 style="background:${sanitizeText(activeColor.color_hex)}">
+            </div>`;
+        } else {
+          this.parentElement.innerHTML = '<div class="placeholder">📦</div>';
+        }
       });
     }
     
     return card;
   }
 
-  // Add clickable references section
+  // Build price display HTML from upfront + monthly fields
+  function buildPriceHtml(upfront, monthly) {
+    if (upfront != null && upfront > 0) {
+      const monthlyLine = monthly != null
+        ? `<span class="price-monthly">or $${formatPrice(monthly)}/mo</span>`
+        : '';
+      return `<div class="product-price">$${formatPrice(upfront)} ${monthlyLine}</div>`;
+    }
+    if (monthly != null) {
+      return `<div class="product-price"><span class="price-monthly-only">From $${formatPrice(monthly)}/mo</span></div>`;
+    }
+    return '';
+  }
+
+  // Add clickable references section (kept, currently commented out in processResponse)
   function addReferencesSection(references) {
     const referencesContainer = document.createElement('div');
     referencesContainer.className = 'references-section';
     
-    // Create title
     const title = document.createElement('div');
     title.className = 'references-title';
     title.textContent = 'References';
     
-    // Create list container
     const referencesList = document.createElement('div');
     referencesList.className = 'references-list';
     
-    // Add each reference as clickable item
     references.forEach(ref => {
       const referenceItem = document.createElement('div');
       referenceItem.className = 'reference-item';
       
-      // Create number badge
       const numberBadge = document.createElement('div');
       numberBadge.className = 'reference-number';
       numberBadge.textContent = ref.number;
       
-      // Create source text (clickable if URL exists)
       const sourceText = document.createElement('div');
       sourceText.className = 'reference-source';
       sourceText.textContent = ref.source;
-      sourceText.title = ref.description || ref.source; // Tooltip
+      sourceText.title = ref.description || ref.source;
       
-      // Make it clickable if we have a valid URL
       if (ref.url && ref.url !== '#') {
         referenceItem.classList.add('clickable');
         referenceItem.addEventListener('click', () => {
           window.open(ref.url, '_blank');
         });
-        
-        // Add click cursor styling
         referenceItem.style.cursor = 'pointer';
-        
-        // Add hover effect
         referenceItem.addEventListener('mouseenter', () => {
           referenceItem.style.backgroundColor = 'rgba(102, 126, 234, 0.1)';
         });
-        
         referenceItem.addEventListener('mouseleave', () => {
           referenceItem.style.backgroundColor = 'transparent';
         });
@@ -370,33 +438,27 @@ function createChatbotOverlay() {
     messageElement.appendChild(referencesContainer);
     
     messagesContainer.appendChild(messageElement);
-    // messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
 
-  // NEW: Add smart suggestions section
+  // Add smart suggestions section
   function addSuggestionsSection(suggestions) {
     const suggestionsContainer = document.createElement('div');
     suggestionsContainer.className = 'suggestions-section';
     
-    // Create title
     const title = document.createElement('div');
     title.className = 'suggestions-title';
     title.textContent = 'You might also ask:';
     
-    // Create suggestions container
     const suggestionsGrid = document.createElement('div');
     suggestionsGrid.className = 'suggestions-grid';
     
-    // Add each suggestion as clickable pill
     suggestions.forEach((suggestion, index) => {
       const suggestionPill = document.createElement('div');
       suggestionPill.className = 'suggestion-pill';
       suggestionPill.textContent = suggestion;
       suggestionPill.style.animationDelay = `${index * 0.1}s`;
       
-      // Add click handler
       suggestionPill.addEventListener('click', () => {
-        // Simulate user typing and sending the suggestion
         input.value = suggestion;
         handleSend();
       });
@@ -412,7 +474,6 @@ function createChatbotOverlay() {
     messageElement.appendChild(suggestionsContainer);
     
     messagesContainer.appendChild(messageElement);
-    // messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
 
   // Typing indicator
@@ -456,33 +517,13 @@ function createChatbotOverlay() {
   }
 
   function formatPrice(price) {
-    if (!price) return '';
-    if (typeof price === 'number') return `${price.toFixed(2)}`;
+    if (price == null) return '';
+    if (typeof price === 'number') return price.toFixed(2);
     return sanitizeText(price.toString());
   }
 
-  function extractCategory(product) {
-    if (product.description) {
-      const desc = product.description.toLowerCase();
-      if (desc.includes('women') || desc.includes('ladies')) return 'for women';
-      if (desc.includes('men') || desc.includes('mens')) return 'for men';
-      if (desc.includes('kids') || desc.includes('children')) return 'for kids';
-    }
-    return null;
-  }
-
-  function getDomainForImages() {
-    const hostname = window.location.hostname;
-    const protocol = window.location.protocol;
-    
-    if (hostname.includes('localhost')) {
-      return `${protocol}//localhost:3000`;
-    } else if (hostname.includes('staging')) {
-      return `${protocol}//staging.spark.co.nz`;
-    } else {
-      return `${protocol}//spark.co.nz`;
-    }
-  }
+  // getDomainForImages() removed — primary_image_url is already a full CDN URL.
+  // extractCategory()  removed — product.brand is now a direct field.
 }
 
 // Initialize overlay based on website configuration
