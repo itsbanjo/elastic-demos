@@ -1,302 +1,479 @@
-// overlay.js - Updated for spark_products index schema
+// overlay.js - Spark NZ assistant with conversation history
 
-// Simple markdown parser to avoid external library issues
+// ---------------------------------------------------------------------------
+// Markdown parser
+// ---------------------------------------------------------------------------
 function parseMarkdown(text) {
   if (!text) return '';
-  
-  let html = text;
-  
-  // Headers
+
+  // ---------------------------------------------------------------------------
+  // Parse tables first — before any other processing touches the newlines
+  // Works by scanning line-by-line for pipe-delimited rows
+  // ---------------------------------------------------------------------------
+  function parseTables(input) {
+    const lines  = input.split('\n');
+    const output = [];
+    let i = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+
+      // Detect a table header row — starts and ends with |
+      if (/^\|.+\|/.test(line.trim())) {
+        // Check next line is a separator (|---|---|)
+        const sepLine = lines[i + 1] || '';
+        if (/^\|[-| :]+\|/.test(sepLine.trim())) {
+          const tableLines = [line, sepLine];
+          let j = i + 2;
+          while (j < lines.length && /^\|.+\|/.test(lines[j].trim())) {
+            tableLines.push(lines[j]);
+            j++;
+          }
+
+          // Build HTML table
+          const parseRow = (row) =>
+            row.split('|').map(c => c.trim()).filter((c, idx, arr) => idx > 0 && idx < arr.length - 1);
+
+          const headers = parseRow(tableLines[0]).map(c => `<th>${c}</th>`).join('');
+          const rows    = tableLines.slice(2).map(row =>
+            `<tr>${parseRow(row).map(c => `<td>${c}</td>`).join('')}</tr>`
+          ).join('');
+
+          output.push(`<table class="md-table"><thead><tr>${headers}</tr></thead><tbody>${rows}</tbody></table>`);
+          i = j;
+          continue;
+        }
+      }
+
+      output.push(line);
+      i++;
+    }
+
+    return output.join('\n');
+  }
+
+  let html = parseTables(text);
+
   html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
   html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
   html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
-  
-  // Bold
   html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
   html = html.replace(/__(.*?)__/g, '<strong>$1</strong>');
-  
-  // Italic
   html = html.replace(/\*(.*?)\*/g, '<em>$1</em>');
   html = html.replace(/_(.*?)_/g, '<em>$1</em>');
-  
-  // Code inline
   html = html.replace(/`(.*?)`/g, '<code>$1</code>');
-  
-  // Links
   html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-  
-  // Line breaks
-  html = html.replace(/\n\n/g, '</p><p>');
+
+  html = html.replace(/\n{3,}/g, '\n\n');
+  html = html.replace(/\n\n/g, '<br>');
   html = html.replace(/\n/g, '<br>');
-  
-  // Lists
+
   const lines = html.split('<br>');
   let inList = false;
   let processedLines = [];
-  
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    
     if (line.startsWith('- ') || line.startsWith('* ')) {
-      if (!inList) {
-        processedLines.push('<ul>');
-        inList = true;
-      }
+      if (!inList) { processedLines.push('<ul>'); inList = true; }
       processedLines.push('<li>' + line.substring(2) + '</li>');
     } else if (line.match(/^\d+\. /)) {
-      if (!inList) {
-        processedLines.push('<ol>');
-        inList = true;
-      }
+      if (!inList) { processedLines.push('<ol>'); inList = true; }
       processedLines.push('<li>' + line.replace(/^\d+\. /, '') + '</li>');
     } else {
-      if (inList) {
-        processedLines.push('</ul>');
-        inList = false;
-      }
-      if (line) {
-        processedLines.push(line);
-      }
+      if (inList) { processedLines.push('</ul>'); inList = false; }
+      if (line) processedLines.push(line);
     }
   }
-  
-  if (inList) {
-    processedLines.push('</ul>');
-  }
-  
+  if (inList) processedLines.push('</ul>');
   html = processedLines.join('<br>');
-  
-  // Wrap in paragraphs if not already wrapped
-  if (!html.includes('<p>') && !html.includes('<ul>') && !html.includes('<h')) {
+  if (!html.includes('<ul>') && !html.includes('<h')) {
     html = '<p>' + html + '</p>';
   }
-  
-  // Clean up extra breaks
   html = html.replace(/<br><br>/g, '<br>');
-  html = html.replace(/<p><br>/g, '<p>');
-  html = html.replace(/<br><\/p>/g, '</p>');
-  
   return html;
 }
 
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
 function createChatbotOverlay() {
-  // Create overlay HTML structure
+
+  // Conversation history — persisted in chrome.storage.session
+  // Survives page navigation within the same browser session
+  // Cleared automatically when browser closes
+  const STORAGE_KEY      = 'tui_conversation_history';
+  const OPEN_STATE_KEY   = 'tui_is_open';
+  let conversationHistory = [];
+
+  // --- Floating bubble ---
+  const bubble = document.createElement('div');
+  bubble.id = 'rag-chatbot-bubble';
+  bubble.innerHTML = `
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+    </svg>
+  `;
+  document.body.appendChild(bubble);
+
+  // --- Overlay panel ---
   const overlay = document.createElement('div');
   overlay.id = 'rag-chatbot-overlay';
+  overlay.classList.add('is-hidden');
   overlay.innerHTML = `
-    <div id="rag-chatbot-header">✨ Spark Elastic Assistant</div>
+    <div id="rag-chatbot-header">
+      <div id="rag-chatbot-header-title">
+        <div id="rag-chatbot-avatar">S</div>
+        <div>
+          <div id="rag-chatbot-name">Spark Assistant</div>
+          <div id="rag-chatbot-status">spark_products · NLP search active</div>
+        </div>
+      </div>
+      <button id="rag-chatbot-minimise" title="Minimise">&#8722;</button>
+    </div>
     <div id="rag-chatbot-messages"></div>
     <div id="rag-chatbot-input">
       <input type="text" placeholder="Ask about products...">
-      <button>Send</button>
+      <button id="rag-send-btn">Send</button>
     </div>
   `;
   document.body.appendChild(overlay);
 
-  // Get DOM elements
+  // --- DOM refs ---
   const messagesContainer = overlay.querySelector('#rag-chatbot-messages');
-  const input = overlay.querySelector('input');
-  const sendButton = overlay.querySelector('button');
+  const input             = overlay.querySelector('input');
+  const sendButton        = overlay.querySelector('#rag-send-btn');
+  const minimiseBtn       = overlay.querySelector('#rag-chatbot-minimise');
 
-  // Store reference data for clickable functionality
-  let currentReferenceSources = [];
+  // ---------------------------------------------------------------------------
+  // Session storage helpers
+  // ---------------------------------------------------------------------------
+  function saveHistory() {
+    chrome.storage.session.set({ [STORAGE_KEY]: conversationHistory });
+  }
 
-  // Add welcome message
-  addMessage('bot', 'Hi! I\'m your Spark product assistant. Ask me about phones, plans, or accessories! 📱', false);
+  function clearHistory() {
+    conversationHistory = [];
+    chrome.storage.session.remove(STORAGE_KEY);
+  }
 
-  // Event handlers
-  function handleSend() {
-    const message = input.value.trim();
-    if (message) {
-      addMessage('user', message, false);
-      input.value = '';
-      showTypingIndicator();
-      sendQuery(message);
+  function saveOpenState(isOpen) {
+    chrome.storage.session.set({ [OPEN_STATE_KEY]: isOpen });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Restore conversation AND open state from session storage on page load
+  // Replays stored messages into the DOM so the user sees their history
+  // ---------------------------------------------------------------------------
+  function restoreSession(onComplete) {
+    chrome.storage.session.get([STORAGE_KEY, OPEN_STATE_KEY], (result) => {
+      const stored  = result[STORAGE_KEY];
+      const wasOpen = result[OPEN_STATE_KEY] === true;
+
+      if (stored && stored.length > 0) {
+        conversationHistory = stored;
+
+        // Replay messages into the DOM
+        messagesContainer.innerHTML = '';
+        stored.forEach(turn => {
+          if (turn.role === 'user') {
+            addMessage('user', turn.content, false);
+          } else {
+            const cleaned = turn.content
+              .replace(/<products>.*?<\/products>/gs, '')
+              .replace(/<suggestions>.*?<\/suggestions>/gs, '')
+              .replace(/<followup>.*?<\/followup>/gs, '')
+              .replace(/<probe>.*?<\/probe>/gs, '')
+              .trim();
+            if (cleaned) addMessage('bot', cleaned, true);
+          }
+        });
+
+        // Show "previous conversation" indicator
+        const indicator = document.createElement('div');
+        indicator.className = 'session-restored';
+        indicator.textContent = '↑ Previous conversation';
+        messagesContainer.appendChild(indicator);
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+      } else {
+        // No stored history — show welcome message
+        addMessage('bot', "Kia ora! I'm Tui, your Spark assistant. Ask me about phones, plans, or accessories! 📱", false);
+      }
+
+      // Restore open state silently — don't trigger lookup or reset history
+      if (wasOpen) {
+        overlay.classList.remove('is-hidden');
+        bubble.classList.add('is-open');
+      }
+
+      if (onComplete) onComplete();
+    });
+  }
+
+  // --- Spark product page URL detection ---
+  const SPARK_PRODUCT_PATTERN = /spark\.co\.nz\/online\/shop\/products\/([^/?#]+)/;
+  const currentSlug = (window.location.href.match(SPARK_PRODUCT_PATTERN) || [])[1] || null;
+
+  // --- Toggle open/close ---
+  function openOverlay() {
+    overlay.classList.remove('is-hidden');
+    bubble.classList.add('is-open');
+    input.focus();
+    saveOpenState(true);
+
+    // Proactive product greeting — only if no existing history
+    if (currentSlug && conversationHistory.length === 0) {
+      setTimeout(() => triggerProductLookup(), 2000);
     }
   }
 
-  sendButton.addEventListener('click', handleSend);
-  input.addEventListener('keypress', (e) => {
-    if (e.key === 'Enter') {
-      handleSend();
+  function closeOverlay() {
+    // Just hide — don't reset history (Option B)
+    overlay.classList.add('is-hidden');
+    bubble.classList.remove('is-open');
+    saveOpenState(false);
+  }
+
+  bubble.addEventListener('click', () => {
+    overlay.classList.contains('is-hidden') ? openOverlay() : closeOverlay();
+  });
+  minimiseBtn.addEventListener('click', closeOverlay);
+
+  // --- Proactive product page lookup ---
+  async function triggerProductLookup() {
+    if (conversationHistory.length > 0) return;
+
+    showTypingIndicator();
+    try {
+      const response = await fetch('http://localhost:5000/lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: window.location.href })
+      });
+
+      const data = await response.json();
+      removeTypingIndicator();
+
+      if (data.matched) {
+        messagesContainer.innerHTML = '';
+        addMessage('bot', data.response, true);
+        conversationHistory.push({ role: 'assistant', content: data.response });
+        saveHistory();
+
+        // Accessories carousel
+        if (data.accessories && data.accessories.length > 0) {
+          addSectionLabel('Compatible accessories');
+          addProductCards(data.accessories);
+        }
+
+        // Device Protect nudge
+        if (data.insurable) {
+          addMessage('bot', '🛡️ **Device Protect** insurance is available for this device — covers accidental damage, theft, and more.', true);
+        }
+
+        if (data.suggestions && data.suggestions.length > 0) {
+          addSuggestionsSection(data.suggestions);
+        }
+      } else {
+        removeTypingIndicator();
+      }
+    } catch (error) {
+      console.error('Lookup error:', error);
+      removeTypingIndicator();
     }
+  }
+
+  // --- Welcome / session restore ---
+  restoreSession(() => {
+    // After session is restored, init is complete
+    // Lookup will trigger on bubble open if needed
   });
 
-  // Send query to backend
+  // ---------------------------------------------------------------------------
+  // Send / receive
+  // ---------------------------------------------------------------------------
+  function handleSend() {
+    const message = input.value.trim();
+    if (!message) return;
+
+    addMessage('user', message, false);
+    input.value = '';
+    showTypingIndicator();
+
+    conversationHistory.push({ role: 'user', content: message });
+    saveHistory();
+
+    sendQuery(message);
+  }
+
+  sendButton.addEventListener('click', handleSend);
+  input.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSend(); });
+
   async function sendQuery(message) {
     try {
       const response = await fetch('http://localhost:5000/query', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          text: message,
-          website: window.location.hostname
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text:    message,
+          website: window.location.hostname,
+          history: conversationHistory.slice(0, -1)
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
+      if (!response.ok) throw new Error('Network error');
+      const data = await response.json();
+
+      removeTypingIndicator();
+
+      if (data.response) {
+        conversationHistory.push({ role: 'assistant', content: data.response });
+        saveHistory();
       }
 
-      const data = await response.json();
-      
-      removeTypingIndicator();
-      processResponse(data.response, data.products || [], data.sources || 0, data.sourceDetails || [], data.suggestions || []);
-      
+      processResponse(
+        data.response,
+        data.products      || [],
+        data.sourceDetails || [],
+        data.suggestions   || [],
+        data.followup      || null,
+        data.probe         || null,
+        data.debugBar      || null
+      );
+
     } catch (error) {
       console.error('Error:', error);
       removeTypingIndicator();
-      addMessage('bot', 'Sorry, I encountered an error while processing your request. Please try again.', false);
+      // Remove the failed user turn from history and storage
+      conversationHistory.pop();
+      saveHistory();
+      addMessage('bot', 'Sorry, something went wrong. Please try again.', false);
     }
   }
 
-  // Process the server response
-  function processResponse(response, products = [], sourcesCount = 0, sourceDetails = [], suggestions = []) {
-    console.log('Processing response:', { response, products, sourcesCount, sourceDetails, suggestions });
-    
-    // Store source details for clickable references
-    currentReferenceSources = sourceDetails;
-    
-    // Add the markdown-rendered conversational response
+  function processResponse(response, products, sourceDetails, suggestions, followup, probe, debugBar) {
+    // Mark the scroll anchor — we want to scroll to the START of this response
+    // not the bottom, so the user sees Tui's answer first
+    const scrollAnchor = document.createElement('div');
+    scrollAnchor.className = 'scroll-anchor';
+    messagesContainer.appendChild(scrollAnchor);
+
     if (response && response.trim()) {
       addMessage('bot', response, true);
     }
-    
-    // Add product cards if available
     if (products && products.length > 0) {
       addProductCards(products);
     }
-    
-    // Add smart suggestions section
+    if (followup) {
+      addFollowupQuestion(followup);
+    }
+    if (probe && probe.question) {
+      addProbe(probe);
+    }
     if (suggestions && suggestions.length > 0) {
       addSuggestionsSection(suggestions);
     }
-  }
-
-  // Extract citation references from response text with actual source data
-  // (kept for future use if references section is re-enabled)
-  function extractReferences(text, sourcesCount, sourceDetails = []) {
-    const references = [];
-    if (!text) return references;
-    
-    const citationMatches = text.match(/\[(\d+)\]/g);
-    
-    if (citationMatches) {
-      const citationNumbers = [...new Set(citationMatches.map(match => 
-        parseInt(match.replace(/[\[\]]/g, ''))
-      ))].sort((a, b) => a - b);
-      
-      citationNumbers.forEach(num => {
-        const sourceDetail = sourceDetails.find(s => s.index === num);
-        
-        references.push({
-          number: num,
-          source: sourceDetail ? sourceDetail.title || sourceDetail.name || `Product Information - Source ${num}` : `Spark Product Information - Source ${num}`,
-          url: sourceDetail ? sourceDetail.url || '#' : '#',
-          description: sourceDetail ? sourceDetail.description : null
-        });
-      });
+    if (debugBar) {
+      addDebugBar(debugBar);
     }
-    
-    return references;
+
+    // Scroll to the anchor — shows the start of this response
+    scrollAnchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  // Add message with markdown support
+  // ---------------------------------------------------------------------------
+  // Messages
+  // ---------------------------------------------------------------------------
   function addMessage(sender, text, isMarkdown = false) {
-    const messageElement = document.createElement('div');
-    messageElement.className = `message ${sender}`;
-    
-    const bubble = document.createElement('div');
-    bubble.className = 'message-bubble';
-    
+    const el = document.createElement('div');
+    el.className = `message ${sender}`;
+    const bbl = document.createElement('div');
+    bbl.className = 'message-bubble';
     if (isMarkdown) {
-      try {
-        const htmlContent = parseMarkdown(text);
-        bubble.innerHTML = htmlContent;
-      } catch (error) {
-        console.warn('Markdown parsing failed:', error);
-        bubble.innerHTML = text.replace(/\n/g, '<br>');
-      }
+      try { bbl.innerHTML = parseMarkdown(text); }
+      catch (e) { bbl.innerHTML = text.replace(/\n/g, '<br>'); }
     } else {
-      bubble.innerHTML = text.replace(/\n/g, '<br>');
+      bbl.innerHTML = text.replace(/\n/g, '<br>');
     }
-    
-    messageElement.appendChild(bubble);
-    messagesContainer.appendChild(messageElement);
+    el.appendChild(bbl);
+    messagesContainer.appendChild(el);
   }
 
-  // Add product cards carousel — structure unchanged, card internals updated
+  // ---------------------------------------------------------------------------
+  // Product cards carousel
+  // ---------------------------------------------------------------------------
   function addProductCards(products) {
-    const productsContainer = document.createElement('div');
-    productsContainer.className = 'products-container';
-    
-    const scrollContainer = document.createElement('div');
-    scrollContainer.className = 'products-scroll';
-    
+    const container = document.createElement('div');
+    container.className = 'products-container';
+    const scroll = document.createElement('div');
+    scroll.className = 'products-scroll';
     products.forEach((product, index) => {
-      const card = createProductCard(product, index);
-      scrollContainer.appendChild(card);
+      scroll.appendChild(createProductCard(product, index));
     });
-    
-    productsContainer.appendChild(scrollContainer);
-    
-    const messageElement = document.createElement('div');
-    messageElement.className = 'message bot';
-    messageElement.appendChild(productsContainer);
-    
-    messagesContainer.appendChild(messageElement);
+    container.appendChild(scroll);
+    const el = document.createElement('div');
+    el.className = 'message bot';
+    el.appendChild(container);
+    messagesContainer.appendChild(el);
   }
 
-  // ---------------------------------------------------------------------------
-  // createProductCard — updated for spark_products schema
-  //
-  // Field mapping (old → new):
-  //   product.name        → product.product_name
-  //   product.image       → product.primary_image_url  (already a full CDN URL)
-  //   product.price       → product.pricing.upfront / product.pricing.min_monthly
-  //   product.color       → product.colors[].color_name (array, drives swatches)
-  //   extractCategory()   → product.brand  (direct field, no description sniffing)
-  //   getDomainForImages  → removed (URL is already absolute)
-  //
-  // New: colour swatch row — clicking a swatch swaps the card image to
-  //      that variant's gallery_urls[0] (or primary_image_url as fallback).
-  // ---------------------------------------------------------------------------
   function createProductCard(product, index) {
     const card = document.createElement('div');
     card.className = 'product-card';
     card.style.animationDelay = `${index * 0.1}s`;
 
-    // --- Field resolution ---
-    const cleanName   = sanitizeText(product.product_name || product.name || 'Unknown Product');
-    const imageUrl    = product.primary_image_url || null;
-    const brand       = sanitizeText(product.brand || '');
-    const storage     = sanitizeText(product.storage || '');
-    const colors      = Array.isArray(product.colors) ? product.colors : [];
+    const cleanName = sanitizeText(product.product_name || product.name || 'Unknown Product');
+    const imageUrl  = product.primary_image_url || null;
+    const brand     = sanitizeText(product.brand   || '');
+    const storage   = sanitizeText(product.storage || '');
+    const color     = sanitizeText(product.color   || '');
 
-    // Prefer upfront price; fall back to monthly if upfront is absent
-    const pricing     = product.pricing || {};
-    const upfront     = pricing.upfront != null ? pricing.upfront : null;
-    const monthly     = pricing.min_monthly != null ? pricing.min_monthly : null;
-    const priceHtml   = buildPriceHtml(upfront, monthly);
+    const pricing  = product.pricing || {};
+    const upfront  = pricing.upfront    != null ? pricing.upfront    : null;
+    const monthly  = pricing.min_monthly != null ? pricing.min_monthly : null;
+    const priceHtml = buildPriceHtml(upfront, monthly);
 
-    // Badge line: brand and/or storage
-    const badgeParts  = [brand, storage].filter(Boolean);
-    const badgeHtml   = badgeParts.length
+    const badgeParts = [brand, storage !== 'NA' ? storage : '', color].filter(Boolean);
+    const badgeHtml  = badgeParts.length
       ? `<div class="product-category">${badgeParts.join(' · ')}</div>`
       : '';
 
-    // Build swatch HTML — rendered into card, wired up after innerHTML set
-    const swatchHtml  = colors.length > 1
-      ? `<div class="color-swatches">${
-          colors.slice(0, 6).map((c, i) =>
-            `<div class="color-swatch${i === 0 ? ' swatch-active' : ''}"
-               style="background:${sanitizeText(c.color_hex || '#ccc')}"
-               title="${sanitizeText(c.color_name || '')}"
-               data-swatch-index="${i}"></div>`
+    const features    = Array.isArray(product.features) ? product.features : [];
+    const featureHtml = features.length
+      ? `<div class="feature-tags">${
+          features.slice(0, 3).map(f =>
+            `<span class="feature-tag">${sanitizeText(f)}</span>`
           ).join('')
         }</div>`
+      : '';
+
+    const plans    = Array.isArray(product.payment_plans) ? product.payment_plans : [];
+    const planRows = plans
+      .sort((a, b) => b.term_months - a.term_months)
+      .slice(0, 3)
+      .map((p, i) => `
+        <tr class="${i === 0 ? 'plan-row-active' : 'plan-row'}">
+          <td>${p.term_months} months</td>
+          <td class="plan-amount">$${formatPrice(p.monthly_amount)}/mo</td>
+        </tr>
+      `).join('');
+
+    const upfrontRow = upfront
+      ? `<tr class="plan-row">
+           <td>Upfront</td>
+           <td class="plan-amount">$${formatPrice(upfront)}</td>
+         </tr>`
+      : '';
+
+    const planTableHtml = planRows
+      ? `<div class="plan-table-wrap">
+           <div class="plan-table-title">Payment options — all interest-free</div>
+           <table class="plan-table">
+             ${planRows}
+             ${upfrontRow}
+           </table>
+         </div>`
       : '';
 
     card.innerHTML = `
@@ -310,209 +487,189 @@ function createChatbotOverlay() {
         <div class="product-name">${cleanName}</div>
         ${badgeHtml}
         ${priceHtml}
-        ${swatchHtml}
-        <button class="product-cta">View Details</button>
+        ${featureHtml}
+        ${planTableHtml}
+        <div class="card-actions">
+          <button class="card-btn btn-details">View Details ↗</button>
+        </div>
       </div>
     `;
 
-    // --- Wire up swatch clicks ---
-    // Clicking a swatch swaps the <img> src to that variant's first gallery image,
-    // or falls back to primary_image_url if gallery_urls is empty.
-    if (colors.length > 1) {
-      const imgEl    = card.querySelector('img');
-      const swatches = card.querySelectorAll('.color-swatch');
-
-      swatches.forEach((swatch, i) => {
-        swatch.addEventListener('click', () => {
-          // Update active state
-          swatches.forEach(s => s.classList.remove('swatch-active'));
-          swatch.classList.add('swatch-active');
-
-          // Swap image if we have an img element to swap
-          if (imgEl && colors[i]) {
-            const variant    = colors[i];
-            const variantImg = (variant.gallery_urls && variant.gallery_urls[0])
-              || variant.primary_image_url
-              || imageUrl;
-
-            if (variantImg) {
-              imgEl.src = variantImg;
-            }
-          }
-        });
-      });
-    }
-
-    // --- View Details CTA ---
-    const ctaButton = card.querySelector('.product-cta');
-    ctaButton.addEventListener('click', () => {
-      if (product.url || product.source_url) {
-        window.open(product.url || product.source_url, '_blank');
-      }
+    card.querySelector('.btn-details').addEventListener('click', () => {
+      const url = product.url || product.source_url;
+      if (url) window.open(url, '_blank');
     });
 
-    // --- Image load error fallback ---
     const img = card.querySelector('img');
     if (img) {
       img.addEventListener('error', function() {
-        // If a color_hex is available for the active variant, show a colour circle
-        // instead of a generic box icon, so the swatch context isn't lost
-        const activeColor = colors[0];
-        if (activeColor && activeColor.color_hex) {
-          this.parentElement.innerHTML = `
-            <div class="placeholder color-fallback"
-                 style="background:${sanitizeText(activeColor.color_hex)}">
-            </div>`;
-        } else {
-          this.parentElement.innerHTML = '<div class="placeholder">📦</div>';
-        }
+        this.parentElement.innerHTML = '<div class="placeholder">📦</div>';
       });
     }
-    
+
     return card;
   }
 
-  // Build price display HTML from upfront + monthly fields
   function buildPriceHtml(upfront, monthly) {
     if (upfront != null && upfront > 0) {
-      const monthlyLine = monthly != null
+      const sub = monthly != null
         ? `<span class="price-monthly">or $${formatPrice(monthly)}/mo</span>`
         : '';
-      return `<div class="product-price">$${formatPrice(upfront)} ${monthlyLine}</div>`;
+      return `<div class="product-price">$${formatPrice(upfront)} ${sub}</div>`;
     }
     if (monthly != null) {
-      return `<div class="product-price"><span class="price-monthly-only">From $${formatPrice(monthly)}/mo</span></div>`;
+      return `<div class="product-price">
+                <span class="price-monthly-only">From $${formatPrice(monthly)}/mo</span>
+              </div>`;
     }
     return '';
   }
 
-  // Add clickable references section (kept, currently commented out in processResponse)
-  function addReferencesSection(references) {
-    const referencesContainer = document.createElement('div');
-    referencesContainer.className = 'references-section';
-    
-    const title = document.createElement('div');
-    title.className = 'references-title';
-    title.textContent = 'References';
-    
-    const referencesList = document.createElement('div');
-    referencesList.className = 'references-list';
-    
-    references.forEach(ref => {
-      const referenceItem = document.createElement('div');
-      referenceItem.className = 'reference-item';
-      
-      const numberBadge = document.createElement('div');
-      numberBadge.className = 'reference-number';
-      numberBadge.textContent = ref.number;
-      
-      const sourceText = document.createElement('div');
-      sourceText.className = 'reference-source';
-      sourceText.textContent = ref.source;
-      sourceText.title = ref.description || ref.source;
-      
-      if (ref.url && ref.url !== '#') {
-        referenceItem.classList.add('clickable');
-        referenceItem.addEventListener('click', () => {
-          window.open(ref.url, '_blank');
-        });
-        referenceItem.style.cursor = 'pointer';
-        referenceItem.addEventListener('mouseenter', () => {
-          referenceItem.style.backgroundColor = 'rgba(102, 126, 234, 0.1)';
-        });
-        referenceItem.addEventListener('mouseleave', () => {
-          referenceItem.style.backgroundColor = 'transparent';
-        });
-      }
-      
-      referenceItem.appendChild(numberBadge);
-      referenceItem.appendChild(sourceText);
-      referencesList.appendChild(referenceItem);
-    });
-    
-    referencesContainer.appendChild(title);
-    referencesContainer.appendChild(referencesList);
-    
-    const messageElement = document.createElement('div');
-    messageElement.className = 'message bot';
-    messageElement.appendChild(referencesContainer);
-    
-    messagesContainer.appendChild(messageElement);
+  // ---------------------------------------------------------------------------
+  // Section label — lightweight divider between product and accessories carousels
+  // ---------------------------------------------------------------------------
+  function addSectionLabel(text) {
+    const el = document.createElement('div');
+    el.className = 'message bot';
+    el.innerHTML = `<div class="section-label">${text}</div>`;
+    messagesContainer.appendChild(el);
   }
 
-  // Add smart suggestions section
-  function addSuggestionsSection(suggestions) {
-    const suggestionsContainer = document.createElement('div');
-    suggestionsContainer.className = 'suggestions-section';
-    
-    const title = document.createElement('div');
-    title.className = 'suggestions-title';
-    title.textContent = 'You might also ask:';
-    
-    const suggestionsGrid = document.createElement('div');
-    suggestionsGrid.className = 'suggestions-grid';
-    
-    suggestions.forEach((suggestion, index) => {
-      const suggestionPill = document.createElement('div');
-      suggestionPill.className = 'suggestion-pill';
-      suggestionPill.textContent = suggestion;
-      suggestionPill.style.animationDelay = `${index * 0.1}s`;
-      
-      suggestionPill.addEventListener('click', () => {
-        input.value = suggestion;
-        handleSend();
-      });
-      
-      suggestionsGrid.appendChild(suggestionPill);
-    });
-    
-    suggestionsContainer.appendChild(title);
-    suggestionsContainer.appendChild(suggestionsGrid);
-    
-    const messageElement = document.createElement('div');
-    messageElement.className = 'message bot';
-    messageElement.appendChild(suggestionsContainer);
-    
-    messagesContainer.appendChild(messageElement);
+  // ---------------------------------------------------------------------------
+  // Follow-up question — rendered as a distinct highlighted block
+  // ---------------------------------------------------------------------------
+  function addFollowupQuestion(question) {
+    const el = document.createElement('div');
+    el.className = 'message bot';
+    el.innerHTML = `
+      <div class="followup-question">
+        <span class="followup-icon">💬</span>
+        <span class="followup-text">${sanitizeText(question)}</span>
+      </div>
+    `;
+    messagesContainer.appendChild(el);
   }
 
-  // Typing indicator
-  function showTypingIndicator() {
-    const typingElement = document.createElement('div');
-    typingElement.className = 'message bot typing-indicator';
-    typingElement.innerHTML = `
-      <div class="message-bubble">
-        <div class="typing-dots">
-          <span></span>
-          <span></span>
-          <span></span>
+  // ---------------------------------------------------------------------------
+  // Probe — cross-sell question with answer pills that submit as queries
+  // ---------------------------------------------------------------------------
+  function addProbe(probe) {
+    const el = document.createElement('div');
+    el.className = 'message bot';
+
+    const pills = (probe.pills || []).map(pill => {
+      // Map pill text to a meaningful query including category context
+      const query = pill.toLowerCase().includes('not') || pill.toLowerCase().includes('no')
+        ? pill
+        : `${pill} — show me ${probe.category.replace('accessories_', '').replace('_', ' ')}`;
+      return `<div class="probe-pill" data-query="${sanitizeText(query)}">${sanitizeText(pill)}</div>`;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="probe-block">
+        <span class="probe-icon">💡</span>
+        <div class="probe-content">
+          <div class="probe-question">${sanitizeText(probe.question)}</div>
+          <div class="probe-pills">${pills}</div>
         </div>
       </div>
     `;
-    
-    messagesContainer.appendChild(typingElement);
+
+    // Wire up pill clicks
+    el.querySelectorAll('.probe-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        input.value = pill.dataset.query;
+        handleSend();
+      });
+    });
+
+    messagesContainer.appendChild(el);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Suggestions
+  // ---------------------------------------------------------------------------
+  function addSuggestionsSection(suggestions) {
+    const container = document.createElement('div');
+    container.className = 'suggestions-section';
+    const title = document.createElement('div');
+    title.className = 'suggestions-title';
+    title.textContent = 'You might also ask:';
+    const grid = document.createElement('div');
+    grid.className = 'suggestions-grid';
+    suggestions.forEach((s, i) => {
+      const pill = document.createElement('div');
+      pill.className = 'suggestion-pill';
+      pill.textContent = s;
+      pill.style.animationDelay = `${i * 0.1}s`;
+      pill.addEventListener('click', () => { input.value = s; handleSend(); });
+      grid.appendChild(pill);
+    });
+    container.appendChild(title);
+    container.appendChild(grid);
+    const el = document.createElement('div');
+    el.className = 'message bot';
+    el.appendChild(container);
+    messagesContainer.appendChild(el);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Debug bar
+  // ---------------------------------------------------------------------------
+  function addDebugBar(debugBar) {
+    const bar = document.createElement('div');
+    bar.className = 'debug-bar';
+
+    const historyInfo = debugBar.history_turns > 0
+      ? ` · ${debugBar.history_turns} turns${debugBar.summarised ? ' (summarised)' : ''}`
+      : '';
+
+    bar.innerHTML = `
+      <span class="debug-index">${sanitizeText(debugBar.index)} · ${debugBar.hits} hit${debugBar.hits !== 1 ? 's' : ''} · ${sanitizeText(debugBar.query_type)}${historyInfo}</span>
+      <span class="debug-tags">
+        <span class="debug-tag">semantic</span>
+        <span class="debug-tag">in_stock</span>
+        <span class="debug-tag">~${debugBar.latency_ms}ms</span>
+      </span>
+    `;
+    const el = document.createElement('div');
+    el.className = 'message bot';
+    el.appendChild(bar);
+    messagesContainer.appendChild(el);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Typing indicator
+  // ---------------------------------------------------------------------------
+  function showTypingIndicator() {
+    const el = document.createElement('div');
+    el.className = 'message bot typing-indicator';
+    el.innerHTML = `
+      <div class="message-bubble">
+        <div class="typing-dots">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    `;
+    messagesContainer.appendChild(el);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
 
   function removeTypingIndicator() {
-    const typingIndicator = messagesContainer.querySelector('.typing-indicator');
-    if (typingIndicator) {
-      typingIndicator.remove();
-    }
+    const el = messagesContainer.querySelector('.typing-indicator');
+    if (el) el.remove();
   }
 
-  // Utility functions
+  // ---------------------------------------------------------------------------
+  // Utilities
+  // ---------------------------------------------------------------------------
   function sanitizeText(text) {
     if (!text) return '';
     return text
-      .replace(/&gt;/g, '')
-      .replace(/&lt;/g, '')
-      .replace(/&amp;/g, '&')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/>/g, '')
-      .replace(/</g, '')
-      .replace(/<[^>]*>/g, '')
+      .replace(/&gt;/g, '').replace(/&lt;/g, '')
+      .replace(/&amp;/g, '&').replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'").replace(/>/g, '')
+      .replace(/</g, '').replace(/<[^>]*>/g, '')
       .trim();
   }
 
@@ -521,12 +678,11 @@ function createChatbotOverlay() {
     if (typeof price === 'number') return price.toFixed(2);
     return sanitizeText(price.toString());
   }
-
-  // getDomainForImages() removed — primary_image_url is already a full CDN URL.
-  // extractCategory()  removed — product.brand is now a direct field.
 }
 
-// Initialize overlay based on website configuration
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
 chrome.storage.sync.get(['websites'], function(result) {
   const websites = result.websites || [];
   if (websites.some(website => window.location.hostname.includes(website))) {

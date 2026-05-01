@@ -75,6 +75,7 @@ HISTORY_SUMMARISE_AT = 8  # summarise when history exceeds this
 # Cross-sell catalogue — cached on startup, refreshed hourly
 # ---------------------------------------------------------------------------
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 CROSS_SELL_CATALOGUE = {}
 CROSS_SELL_LOCK      = threading.Lock()
@@ -937,6 +938,34 @@ def query_products():
 # ---------------------------------------------------------------------------
 # Lookup endpoint — proactive upsell greeting for product pages
 # ---------------------------------------------------------------------------
+_BRAND_PREFIXES = ['samsung-', 'apple-', 'google-', 'oppo-', 'motorola-', 'nokia-']
+_CONNECTIVITY_SUFFIXES = ['-5g', '-4g', '-lte', '-wifi']
+_WORD_FIXES = {'iphone': 'iPhone', 'ipad': 'iPad', 'airpods': 'AirPods', 'magsafe': 'MagSafe'}
+_BRANDED_NAMES = {'oppo': 'OPPO', 'google': 'Google', 'motorola': 'Motorola', 'nokia': 'Nokia'}
+
+def parse_slug_keywords(slug):
+    s = slug.lower()
+    brand = None
+    for prefix in _BRAND_PREFIXES:
+        if s.startswith(prefix):
+            brand = prefix.rstrip('-')
+            s = s[len(prefix):]
+            break
+    for suffix in _CONNECTIVITY_SUFFIXES:
+        if s.endswith(suffix):
+            s = s[:-len(suffix)]
+            break
+    words = [_WORD_FIXES.get(w, w.capitalize()) for w in s.split('-')]
+    variants = [' '.join(words)]
+    if len(words) > 1:
+        variants.append(' '.join(words[1:]))
+    if len(words) > 2:
+        variants.append(' '.join(words[1:2]))
+    if brand and brand in _BRANDED_NAMES:
+        variants.append(f"{_BRANDED_NAMES[brand]} {variants[0]}")
+    return list(dict.fromkeys(variants))[:4]
+
+
 @app.route('/lookup', methods=['POST'])
 def lookup_product():
     try:
@@ -1016,76 +1045,12 @@ def lookup_product():
             perk_str = f" — includes {', '.join(perks)}" if perks else ""
             plans_context += f"- {p['name']} (${p['monthly_price']}/mo): device ${mo36}/mo on 36mo, ${credit} credit{perk_str}\n"
 
-        # --- Query 2: Compatible accessories ---
-        # Use Haiku to extract model keyword variants from the slug
-        # e.g. "samsung-galaxy-s26-ultra-5g" → ["Galaxy S26 Ultra", "S26 Ultra", "S26"]
-        accessories = []
-        model_keywords = []
+        # --- Query 2: Compatible accessories + greeting (parallel) ---
+        model_keywords = parse_slug_keywords(slug)
+        logger.info(f"Lookup model keywords: {model_keywords}")
 
-        try:
-            slug_parse_prompt = f"""Extract phone model name variants from this Spark NZ product URL slug for accessory compatibility matching.
-
-Slug: "{slug}"
-
-Return a JSON array of 2-4 model name variants, from most specific to least specific.
-These will be used to query a "compatible_models" field in an accessories index.
-
-Examples:
-- "samsung-galaxy-s26-ultra-5g" → ["Galaxy S26 Ultra", "S26 Ultra", "S26"]
-- "apple-iphone-17-pro-max" → ["iPhone 17 Pro Max", "17 Pro Max", "iPhone 17"]
-- "oppo-find-n6" → ["Find N6", "OPPO Find N6"]
-- "samsung-galaxy-z-fold7-5g" → ["Galaxy Z Fold7", "Z Fold7", "Galaxy Z Fold"]
-
-Return ONLY a valid JSON array of strings, no explanation."""
-
-            raw_keywords = es_client.inference.completion(
-                inference_id=EIS_HAIKU,
-                input=slug_parse_prompt,
-                task_settings={"max_tokens": 100}
-            )
-            kw_text = raw_keywords["completion"][0]["result"].strip()
-            kw_text = kw_text.replace("```json", "").replace("```", "").strip()
-            model_keywords = json.loads(kw_text)
-            logger.info(f"Lookup model keywords: {model_keywords}")
-
-        except Exception as e:
-            logger.warning(f"Slug keyword extraction failed: {e}")
-
-        if model_keywords:
-            should_clauses = [
-                {"term": {"compatible_models": kw}} for kw in model_keywords
-            ]
-            acc_result = es_client.search(index=SEARCH_INDEX, body={
-                "query": {
-                    "bool": {
-                        "filter": [
-                            {"term": {"availability": "in_stock"}},
-                            {"terms": {"category": [
-                                "accessories_cases_protection",
-                                "accessories_cables_chargers",
-                                "accessories_gaming",
-                                "accessories_speakers"
-                            ]}}
-                        ],
-                        "should": should_clauses,
-                        "minimum_should_match": 1
-                    }
-                },
-                "size": 4,
-                "_source": [
-                    "product_name", "brand", "category", "color", "pricing",
-                    "primary_image_url", "source_url", "compatible_models"
-                ]
-            })
-            accessories = extract_products(acc_result["hits"]["hits"])
-            logger.info(f"Lookup: {len(accessories)} compatible accessories found")
-        else:
-            logger.info("Lookup: no model keywords extracted, skipping accessories query")
-
-        # --- Build insurance context ---
         insurance_line = "Spark Device Protect insurance is available for this device." if insurable else ""
 
-        # --- Generate upsell-first greeting ---
         greeting_prompt = f"""You are Tui, a friendly Spark NZ sales assistant.
 
 A customer just opened the chat while browsing the {product_name} page on spark.co.nz.
@@ -1112,12 +1077,47 @@ Generate the greeting now.
 <products>{json.dumps([str(i+1) for i in range(min(len(hits), 3))])}</products>
 <suggestions>["Show all plan options", "Tell me about Device Protect", "Any compatible cases?", "What's the trade-in value?"]</suggestions>"""
 
-        raw = es_client.inference.completion(
-            inference_id=EIS_SONNET,
-            input=greeting_prompt,
-            task_settings={"max_tokens": 250}
-        )
-        full_text = raw["completion"][0]["result"]
+        def fetch_accessories():
+            if not model_keywords:
+                return []
+            should_clauses = [{"term": {"compatible_models": kw}} for kw in model_keywords]
+            acc_result = es_client.search(index=SEARCH_INDEX, body={
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {"term": {"availability": "in_stock"}},
+                            {"terms": {"category": [
+                                "accessories_cases_protection",
+                                "accessories_cables_chargers",
+                                "accessories_gaming",
+                                "accessories_speakers"
+                            ]}}
+                        ],
+                        "should": should_clauses,
+                        "minimum_should_match": 1
+                    }
+                },
+                "size": 4,
+                "_source": [
+                    "product_name", "brand", "category", "color", "pricing",
+                    "primary_image_url", "source_url", "compatible_models"
+                ]
+            })
+            return extract_products(acc_result["hits"]["hits"])
+
+        def fetch_greeting():
+            raw = es_client.inference.completion(
+                inference_id=EIS_SONNET,
+                input=greeting_prompt,
+                task_settings={"max_tokens": 250}
+            )
+            return raw["completion"][0]["result"]
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_acc = executor.submit(fetch_accessories)
+            future_greeting = executor.submit(fetch_greeting)
+            accessories = future_acc.result()
+            full_text = future_greeting.result()
 
         # Parse blocks
         ranked_indices  = [str(i+1) for i in range(min(len(hits), 3))]
