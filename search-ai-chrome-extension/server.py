@@ -75,7 +75,6 @@ HISTORY_SUMMARISE_AT = 8  # summarise when history exceeds this
 # Cross-sell catalogue — cached on startup, refreshed hourly
 # ---------------------------------------------------------------------------
 import threading
-from concurrent.futures import ThreadPoolExecutor
 
 CROSS_SELL_CATALOGUE = {}
 CROSS_SELL_LOCK      = threading.Lock()
@@ -153,6 +152,24 @@ def format_cross_sell_catalogue():
         return "\n".join(lines)
 
 # ---------------------------------------------------------------------------
+# Category affinity map — defines natural cross-sell pairs for non-handset probing
+# ---------------------------------------------------------------------------
+CATEGORY_AFFINITY = {
+    "smart_tv":               ["accessories_gaming", "accessories_speakers", "accessories_headphones"],
+    "tablets":                ["accessories_headphones", "accessories_speakers", "accessories_laptop"],
+    "accessories_gaming":     ["accessories_headphones", "accessories_speakers"],
+    "accessories_speakers":   ["accessories_headphones", "accessories_gaming"],
+    "accessories_headphones": ["accessories_speakers", "accessories_gaming"],
+    "accessories_laptop":     ["accessories_wearables", "accessories_memory"],
+    "accessories_wearables":  ["wearables", "accessories_laptop"],
+    "wearables":              ["accessories_wearables", "handsets"],
+    "accessories_smart_home": ["accessories_security"],
+    "accessories_security":   ["accessories_smart_home"],
+    "accessories_tonies":     ["accessories_tonies"],
+    "data_devices":           ["accessories_laptop", "accessories_wearables"],
+}
+
+# ---------------------------------------------------------------------------
 # System prompt
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = """
@@ -176,6 +193,7 @@ You have access to real-time Spark product data including pricing, payment plans
 - Always mention the monthly price alongside upfront — customers think in monthly terms
 - When mentioning plans, combine device monthly + plan cost into a total (e.g. "$1/mo device + $75/mo plan = $76/mo total")
 - If a product has device credit, mention it — it's a key selling point
+- When a product has multiple colour or storage variants, mention them naturally — e.g. "available in Black, White and Titanium" or "comes in 256GB and 512GB"
 - For spec questions, answer directly without listing every spec
 - If nothing in the context matches the question, say so honestly
 - Use conversation history to understand follow-up questions and references to previous products
@@ -373,8 +391,14 @@ Return format:
   "min_camera_mp": null,
   "min_storage_gb": null,
   "use_case_tags": [],
-  "ambiguous": false
+  "ambiguous": false,
+  "purchase_ready": false
 }}
+
+purchase_ready rules:
+- Set purchase_ready=true ONLY when the customer clearly signals they want to proceed with a purchase
+- Trigger phrases: "I'll take it", "I'll get it", "that's the one", "I want that", "add to cart", "let's do it", "perfect I'll take it", "I'm done", "show me the summary", "yes that one", "sold", "I'll buy it", "order that"
+- Never set purchase_ready=true on first message or when comparing products
 
 intent_type rules:
 - "informational" — question about concepts, policies, or how things work. Examples: "What is device credit?", "How do trade-ins work?", "What does 5G mean?", "What plans do you have?", "How does interest-free work?", "What is eSIM?"
@@ -448,6 +472,14 @@ def search_products(query, intent):
                 "filter": filters
             }
         },
+        "collapse": {
+            "field": "product_name.keyword",
+            "inner_hits": {
+                "name": "variants",
+                "size": 20,
+                "_source": ["color", "storage", "pricing", "payment_plans", "availability"]
+            }
+        },
         "size": 5,
         "_source": [
             "product_name", "brand", "category", "color", "storage",
@@ -476,6 +508,22 @@ def extract_products(results):
         name   = source.get('product_name')
         if not name:
             continue
+        inner = hit.get("inner_hits", {}).get("variants", {}).get("hits", {}).get("hits", [])
+        seen_v, variants = set(), []
+        for vh in inner:
+            vs = vh["_source"]
+            if vs.get("availability") != "in_stock":
+                continue
+            key = (vs.get("color", ""), vs.get("storage", ""))
+            if key not in seen_v:
+                seen_v.add(key)
+                variants.append({
+                    "color":         vs.get("color"),
+                    "storage":       vs.get("storage"),
+                    "pricing":       vs.get("pricing", {}),
+                    "payment_plans": vs.get("payment_plans", [])
+                })
+
         products.append({
             "product_name":      name,
             "brand":             source.get('brand'),
@@ -493,7 +541,8 @@ def extract_products(results):
             "url":               source.get('source_url'),
             "specs":             source.get('specs', {}),
             "trade_in_eligible": source.get('trade_in_eligible', False),
-            "insurable":         source.get('insurable', False)
+            "insurable":         source.get('insurable', False),
+            "variants":          variants
         })
         logger.info(f"Product: {name} | {source.get('color')} | {source.get('storage')}")
     return products
@@ -551,6 +600,25 @@ def create_context(results):
         if specs.get('ip_rating'):       spec_parts.append(specs['ip_rating'])
         if spec_parts:
             parts.append(f"Specs: {', '.join(spec_parts)}")
+
+        inner = hit.get("inner_hits", {}).get("variants", {}).get("hits", {}).get("hits", [])
+        colors, storages, seen_v = [], [], set()
+        for vh in inner:
+            vs = vh["_source"]
+            if vs.get("availability") != "in_stock":
+                continue
+            key = (vs.get("color", ""), vs.get("storage", ""))
+            if key not in seen_v:
+                seen_v.add(key)
+                c, s = vs.get("color"), vs.get("storage")
+                if c and c not in colors:
+                    colors.append(c)
+                if s and s not in storages:
+                    storages.append(s)
+        if len(colors) > 1:
+            parts.append(f"Available colours: {', '.join(colors)}")
+        if len(storages) > 1:
+            parts.append(f"Available storage: {', '.join(storages)}")
 
         if source.get('features'):      parts.append(f"Features: {', '.join(source['features'])}")
         if source.get('use_case_tags'): parts.append(f"Best for: {', '.join(source['use_case_tags'])}")
@@ -733,13 +801,15 @@ def query_products():
         if not data:
             return jsonify({"error": "No JSON data provided"}), 400
 
-        query   = data.get('text', '').strip()
-        history = data.get('history', [])  # conversation history from overlay.js
+        query          = data.get('text', '').strip()
+        history        = data.get('history', [])  # conversation history from overlay.js
+        click_source   = data.get('click_source')   # "suggestion" | "probe" | "followup" | None
+        probe_category = data.get('probe_category')  # e.g. "accessories_gaming" (probe only)
 
         if not query:
             return jsonify({"error": "No query provided"}), 400
 
-        logger.info(f"Query: '{query}' | History turns: {len(history)}")
+        logger.info(f"Query: '{query}' | History turns: {len(history)}" + (f" | source={click_source}" if click_source else ""))
         start_time = time.time()
 
         # 1. Summarise history if needed — keeps payload lean for long conversations
@@ -771,7 +841,8 @@ def query_products():
             })
 
         # 4. Ambiguous query — clarification flow
-        if intent.get("ambiguous"):
+        # Skip when history exists: Sonnet can resolve the query from conversation context
+        if intent.get("ambiguous") and not summary and not recent_history:
             logger.info("Ambiguous query — returning clarification response")
             return jsonify({
                 "response":      "I can help with that! What are you looking for?",
@@ -787,7 +858,32 @@ def query_products():
                 "intent": intent
             })
 
-        # 4. Search with semantic + hard filters
+        # 5. Purchase ready — summarise from history, skip ES entirely
+        if intent.get("purchase_ready"):
+            logger.info("Purchase ready — generating order summary from conversation history")
+            purchase_context = (
+                "The customer has finished browsing and is ready to buy. "
+                "Using the conversation history, write a brief order summary listing "
+                "what they chose with prices. Keep it under 60 words. "
+                "End with: 'To complete your order, visit spark.co.nz or call 0800 800 123.'"
+            )
+            ai_response, _, tui_suggestions, tui_followup, _probe, _pt, _ct = generate_response(
+                purchase_context, query, recent_history, summary, cross_sell_context=""
+            )
+            return jsonify({
+                "response":      ai_response,
+                "sources":       0,
+                "products":      [],
+                "sourceDetails": [],
+                "suggestions":   tui_suggestions or ["Visit spark.co.nz", "Call 0800 800 123", "Start a new search"],
+                "followup":      tui_followup,
+                "probe":         None,
+                "intent":        intent,
+                "show_cart":     True,
+                "cart_product":  None
+            })
+
+        # 6. Search with semantic + hard filters
         # Create a named "search" span — search.* attributes live here as a
         # child of the Flask request span. Matches the hierarchy described in
         # https://github.com/elastic/search-analytics-otel-reference
@@ -797,6 +893,10 @@ def query_products():
             span.set_attribute("search.user_query",  query.strip().lower())
             span.set_attribute("search.application", "spark-tui")
             span.set_attribute("search.query_id",    query_id)
+            if click_source:
+                span.set_attribute("search.click_source",   click_source)
+            if probe_category:
+                span.set_attribute("search.probe_category", probe_category)
 
             results, took_ms = search_products(query, intent)
             price_constraint_failed = False
@@ -905,7 +1005,9 @@ def query_products():
             "followup":      tui_followup,
             "probe":         tui_probe,
             "intent":        intent,
-            "query_id":      query_id
+            "query_id":      query_id,
+            "show_cart":     bool(intent.get("purchase_ready")),
+            "cart_product":  ordered_products[0] if intent.get("purchase_ready") and ordered_products else None
         }
 
         if DEBUG_BAR:
@@ -938,34 +1040,6 @@ def query_products():
 # ---------------------------------------------------------------------------
 # Lookup endpoint — proactive upsell greeting for product pages
 # ---------------------------------------------------------------------------
-_BRAND_PREFIXES = ['samsung-', 'apple-', 'google-', 'oppo-', 'motorola-', 'nokia-']
-_CONNECTIVITY_SUFFIXES = ['-5g', '-4g', '-lte', '-wifi']
-_WORD_FIXES = {'iphone': 'iPhone', 'ipad': 'iPad', 'airpods': 'AirPods', 'magsafe': 'MagSafe'}
-_BRANDED_NAMES = {'oppo': 'OPPO', 'google': 'Google', 'motorola': 'Motorola', 'nokia': 'Nokia'}
-
-def parse_slug_keywords(slug):
-    s = slug.lower()
-    brand = None
-    for prefix in _BRAND_PREFIXES:
-        if s.startswith(prefix):
-            brand = prefix.rstrip('-')
-            s = s[len(prefix):]
-            break
-    for suffix in _CONNECTIVITY_SUFFIXES:
-        if s.endswith(suffix):
-            s = s[:-len(suffix)]
-            break
-    words = [_WORD_FIXES.get(w, w.capitalize()) for w in s.split('-')]
-    variants = [' '.join(words)]
-    if len(words) > 1:
-        variants.append(' '.join(words[1:]))
-    if len(words) > 2:
-        variants.append(' '.join(words[1:2]))
-    if brand and brand in _BRANDED_NAMES:
-        variants.append(f"{_BRANDED_NAMES[brand]} {variants[0]}")
-    return list(dict.fromkeys(variants))[:4]
-
-
 @app.route('/lookup', methods=['POST'])
 def lookup_product():
     try:
@@ -1016,12 +1090,14 @@ def lookup_product():
         first       = hits[0]["_source"]
         product_name = first.get("product_name", "this product")
         brand        = first.get("brand", "")
+        category     = first.get("category", "")
         insurable    = first.get("insurable", False)
+        is_handset   = category == "handsets"
         products     = extract_products(hits)
 
-        # --- Build plan upsell context ---
+        # --- Build plan upsell context (handsets only) ---
         # Sort plans most expensive first — sales life
-        mobile_plans = first.get("mobile_plans", [])
+        mobile_plans = first.get("mobile_plans", []) if is_handset else []
         consumer_plans = sorted(
             [p for p in mobile_plans if p.get("plan_id", "").startswith("mbundle07") and p.get("monthly_price")],
             key=lambda p: p.get("monthly_price", 0),
@@ -1045,42 +1121,45 @@ def lookup_product():
             perk_str = f" — includes {', '.join(perks)}" if perks else ""
             plans_context += f"- {p['name']} (${p['monthly_price']}/mo): device ${mo36}/mo on 36mo, ${credit} credit{perk_str}\n"
 
-        # --- Query 2: Compatible accessories + greeting (parallel) ---
-        model_keywords = parse_slug_keywords(slug)
-        logger.info(f"Lookup model keywords: {model_keywords}")
+        # --- Query 2: Compatible accessories ---
+        # Use Haiku to extract model keyword variants from the slug
+        # e.g. "samsung-galaxy-s26-ultra-5g" → ["Galaxy S26 Ultra", "S26 Ultra", "S26"]
+        accessories = []
+        model_keywords = []
 
-        insurance_line = "Spark Device Protect insurance is available for this device." if insurable else ""
+        try:
+            slug_parse_prompt = f"""Extract phone model name variants from this Spark NZ product URL slug for accessory compatibility matching.
 
-        greeting_prompt = f"""You are Tui, a friendly Spark NZ sales assistant.
+Slug: "{slug}"
 
-A customer just opened the chat while browsing the {product_name} page on spark.co.nz.
-They already know what the product is — do NOT describe specs or features they can read on the page.
+Return a JSON array of 2-4 model name variants, from most specific to least specific.
+These will be used to query a "compatible_models" field in an accessories index.
 
-Your job: jump straight to the best deal. Lead with the most expensive plan first (that's the upsell), mention the key perk that makes it worth it, then offer to help them explore.
+Examples:
+- "samsung-galaxy-s26-ultra-5g" → ["Galaxy S26 Ultra", "S26 Ultra", "S26"]
+- "apple-iphone-17-pro-max" → ["iPhone 17 Pro Max", "17 Pro Max", "iPhone 17"]
+- "oppo-find-n6" → ["Find N6", "OPPO Find N6"]
+- "samsung-galaxy-z-fold7-5g" → ["Galaxy Z Fold7", "Z Fold7", "Galaxy Z Fold"]
 
-Available plans (most expensive first):
-{plans_context}
-{insurance_line}
+Return ONLY a valid JSON array of strings, no explanation."""
 
-Rules:
-- Max 3 sentences
-- Start with a warm greeting (Kia ora, Hey there, etc.)
-- Lead with the highest-value plan and its standout perk (Netflix, satellite, AU roaming)
-- Mention the device credit
-- End with one natural offer to help — not a question list
-- Never describe the product specs
+            raw_keywords = es_client.inference.completion(
+                inference_id=EIS_HAIKU,
+                input=slug_parse_prompt,
+                task_settings={"max_tokens": 100}
+            )
+            kw_text = raw_keywords["completion"][0]["result"].strip()
+            kw_text = kw_text.replace("```json", "").replace("```", "").strip()
+            model_keywords = json.loads(kw_text)
+            logger.info(f"Lookup model keywords: {model_keywords}")
 
-Good example for S26 Ultra:
-"Kia ora! The best deal on the S26 Ultra right now is the $95 Unlimited Netflix Plan — you get unlimited data, Netflix Standard included, plus a $600 device credit bringing it to $51.39/mo. Want me to walk you through all the plan options?"
+        except Exception as e:
+            logger.warning(f"Slug keyword extraction failed: {e}")
 
-Generate the greeting now.
-<products>{json.dumps([str(i+1) for i in range(min(len(hits), 3))])}</products>
-<suggestions>["Show all plan options", "Tell me about Device Protect", "Any compatible cases?", "What's the trade-in value?"]</suggestions>"""
-
-        def fetch_accessories():
-            if not model_keywords:
-                return []
-            should_clauses = [{"term": {"compatible_models": kw}} for kw in model_keywords]
+        if model_keywords:
+            should_clauses = [
+                {"term": {"compatible_models": kw}} for kw in model_keywords
+            ]
             acc_result = es_client.search(index=SEARCH_INDEX, body={
                 "query": {
                     "bool": {
@@ -1103,25 +1182,107 @@ Generate the greeting now.
                     "primary_image_url", "source_url", "compatible_models"
                 ]
             })
-            return extract_products(acc_result["hits"]["hits"])
+            accessories = extract_products(acc_result["hits"]["hits"])
+            logger.info(f"Lookup: {len(accessories)} compatible accessories found")
+        else:
+            logger.info("Lookup: no model keywords extracted, skipping accessories query")
 
-        def fetch_greeting():
-            raw = es_client.inference.completion(
-                inference_id=EIS_SONNET,
-                input=greeting_prompt,
-                task_settings={"max_tokens": 250}
-            )
-            return raw["completion"][0]["result"]
+        # --- Build insurance context ---
+        insurance_line = "Spark Device Protect insurance is available for this device." if insurable else ""
 
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            future_acc = executor.submit(fetch_accessories)
-            future_greeting = executor.submit(fetch_greeting)
-            accessories = future_acc.result()
-            full_text = future_greeting.result()
+        # --- Generate greeting — plan upsell for handsets, simple assist for everything else ---
+        if consumer_plans:
+            greeting_prompt = f"""You are Tui, a friendly Spark NZ sales assistant.
+
+A customer just opened the chat while browsing the {product_name} page on spark.co.nz.
+They already know what the product is — do NOT describe specs or features they can read on the page.
+
+Your job: jump straight to the best deal. Lead with the most expensive plan first (that's the upsell), mention the key perk that makes it worth it, then offer to help them explore.
+
+Available plans (most expensive first):
+{plans_context}
+{insurance_line}
+
+Rules:
+- Max 3 sentences
+- Skip any opening greeting — jump straight to the deal
+- Lead with the highest-value plan and its standout perk (Netflix, satellite, AU roaming)
+- Mention the device credit
+- End with one natural offer to help — not a question list
+- Never describe the product specs
+
+Good example for S26 Ultra:
+"The best deal on the S26 Ultra right now is the $95 Unlimited Netflix Plan — unlimited data, Netflix Standard included, plus a $600 device credit bringing it to $51.39/mo. Want me to walk you through all the plan options?"
+
+Generate the greeting now.
+<products>{json.dumps([str(i+1) for i in range(min(len(hits), 3))])}</products>
+<suggestions>["Show all plan options", "Tell me about Device Protect", "Any compatible cases?", "What's the trade-in value?"]</suggestions>"""
+        else:
+            # Build probe context from affinity map + cross-sell catalogue
+            affinity_cats = CATEGORY_AFFINITY.get(category, [])
+            probe_context = ""
+            with CROSS_SELL_LOCK:
+                available_probes = [
+                    (cat, CROSS_SELL_CATALOGUE[cat])
+                    for cat in affinity_cats
+                    if cat in CROSS_SELL_CATALOGUE
+                ]
+            if available_probes:
+                lines = []
+                for cat, info in available_probes:
+                    readable = cat.replace("accessories_", "").replace("_", " ").title()
+                    examples = ", ".join(info.get("examples", [])[:2])
+                    lines.append(f"- {readable}: {examples}" if examples else f"- {readable}")
+                probe_context = "Available cross-sell categories to probe:\n" + "\n".join(lines)
+
+            greeting_prompt = f"""You are Tui, a friendly Spark NZ sales assistant.
+
+A customer just opened the chat while browsing the {product_name} page on spark.co.nz.
+They already know what the product is — do NOT describe specs or features they can read on the page.
+This is a {category.replace("_", " ")} product. Do NOT mention mobile plans, device credits, or monthly plan pricing.
+{insurance_line}
+
+{probe_context}
+
+Your job:
+1. One short sentence that acknowledges they're looking at something great (no specs)
+2. Ask a creative dual-path lifestyle question that feels like genuine curiosity — where BOTH pill answers reveal a different cross-sell need
+
+Rules:
+- Max 1 sentence of prose before the probe
+- Skip any opening greeting
+- The probe question must bridge naturally from the product to a lifestyle interest
+- Pills should represent distinct lifestyles — both answers open different but valid cross-sell paths
+- Pick ONE probe category from the available list above that best fits the conversation
+
+Output format — always append these structured blocks after the prose:
+
+<products>["1","2"]</products>
+<suggestions>["suggestion 1", "suggestion 2", "suggestion 3", "suggestion 4"]</suggestions>
+<probe>category:accessories_gaming|question:Your probe question here?|pills:["Pill 1", "Pill 2", "Pill 3"]</probe>
+
+Good example for a Smart TV:
+Prose: "Great choice for a home cinema setup."
+<products>["1","2","3"]</products>
+<suggestions>["Find compatible accessories", "What's in the box?", "Tell me about Device Protect", "Any current deals?"]</suggestions>
+<probe>category:accessories_gaming|question:Quick question — do you tend to use your TV more for gaming, or for streaming movies and shows?|pills:["I game on it", "Streaming & movies", "Both!", "Just browsing"]</probe>
+
+Generate the greeting now."""
+
+        raw = es_client.inference.completion(
+            inference_id=EIS_SONNET,
+            input=greeting_prompt,
+            task_settings={"max_tokens": 350}
+        )
+        full_text = raw["completion"][0]["result"]
 
         # Parse blocks
         ranked_indices  = [str(i+1) for i in range(min(len(hits), 3))]
-        tui_suggestions = ["Show all plan options", "Tell me about Device Protect", "Any compatible cases?", "What's the trade-in value?"]
+        tui_suggestions = (
+            ["Show all plan options", "Tell me about Device Protect", "Any compatible cases?", "What's the trade-in value?"]
+            if is_handset else
+            ["Find compatible accessories", "What's in the box?", "Tell me about Device Protect", "Any current deals?"]
+        )
         prose           = full_text
 
         match_p = re.search(r'<products>(.*?)</products>', full_text, re.DOTALL)
@@ -1134,8 +1295,21 @@ Generate the greeting now.
             try: tui_suggestions = json.loads(match_s.group(1).strip())
             except: pass
 
+        tui_probe = None
+        match_probe = re.search(r'<probe>(.*?)</probe>', full_text, re.DOTALL)
+        if match_probe:
+            try:
+                probe_parts = dict(part.split(":", 1) for part in match_probe.group(1).strip().split("|") if ":" in part)
+                tui_probe = {
+                    "category": probe_parts.get("category", ""),
+                    "question": probe_parts.get("question", ""),
+                    "pills":    json.loads(probe_parts.get("pills", "[]"))
+                }
+            except: pass
+
         prose = re.sub(r'<products>.*?</products>', '', full_text, flags=re.DOTALL)
         prose = re.sub(r'<suggestions>.*?</suggestions>', '', prose, flags=re.DOTALL)
+        prose = re.sub(r'<probe>.*?</probe>', '', prose, flags=re.DOTALL)
         prose = prose.strip()
 
         # Reorder product variants by Tui ranking
@@ -1151,6 +1325,7 @@ Generate the greeting now.
             "response":     prose,
             "accessories":  accessories,
             "suggestions":  tui_suggestions,
+            "probe":        tui_probe,
             "insurable":    insurable
         })
 

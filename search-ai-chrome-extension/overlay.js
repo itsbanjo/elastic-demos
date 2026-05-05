@@ -1,5 +1,7 @@
 // overlay.js - Spark NZ assistant with conversation history
 
+const API_BASE = 'http://localhost:5000';
+
 // ---------------------------------------------------------------------------
 // Markdown parser
 // ---------------------------------------------------------------------------
@@ -98,12 +100,22 @@ function parseMarkdown(text) {
 // ---------------------------------------------------------------------------
 function createChatbotOverlay() {
 
-  // Conversation history — persisted in chrome.storage.session
+  // Conversation history — persisted in chrome.storage.local
+  // Note: local (not session) — session storage is blocked in content script context
   // Survives page navigation within the same browser session
   // Cleared automatically when browser closes
   const STORAGE_KEY      = 'tui_conversation_history';
   const OPEN_STATE_KEY   = 'tui_is_open';
   let conversationHistory = [];
+
+  // Search analytics — track last query_id for click attribution
+  let lastQueryId      = null;
+  let lastUserQuery    = null;
+  const clickedQueryIds = new Set();
+
+  // Session ID — generated once per browser session, sent as X-Session-Id header
+  // Groups all /query calls from the same conversation for chat.session_id in APM
+  const sessionId = crypto.randomUUID();
 
   // --- Floating bubble ---
   const bubble = document.createElement('div');
@@ -129,6 +141,7 @@ function createChatbotOverlay() {
           <div id="rag-chatbot-status">spark_products · NLP search active</div>
         </div>
       </div>
+      <button id="rag-chatbot-reset"    title="Reset demo">&#8635;</button>
       <button id="rag-chatbot-minimise" title="Minimise">&#8722;</button>
     </div>
     <div id="rag-chatbot-messages"></div>
@@ -144,21 +157,22 @@ function createChatbotOverlay() {
   const input             = overlay.querySelector('input');
   const sendButton        = overlay.querySelector('#rag-send-btn');
   const minimiseBtn       = overlay.querySelector('#rag-chatbot-minimise');
+  const resetBtn          = overlay.querySelector('#rag-chatbot-reset');
 
   // ---------------------------------------------------------------------------
   // Session storage helpers
   // ---------------------------------------------------------------------------
   function saveHistory() {
-    chrome.storage.session.set({ [STORAGE_KEY]: conversationHistory });
+    chrome.storage.local.set({ [STORAGE_KEY]: conversationHistory });
   }
 
   function clearHistory() {
     conversationHistory = [];
-    chrome.storage.session.remove(STORAGE_KEY);
+    chrome.storage.local.remove(STORAGE_KEY);
   }
 
   function saveOpenState(isOpen) {
-    chrome.storage.session.set({ [OPEN_STATE_KEY]: isOpen });
+    chrome.storage.local.set({ [OPEN_STATE_KEY]: isOpen });
   }
 
   // ---------------------------------------------------------------------------
@@ -166,15 +180,14 @@ function createChatbotOverlay() {
   // Replays stored messages into the DOM so the user sees their history
   // ---------------------------------------------------------------------------
   function restoreSession(onComplete) {
-    chrome.storage.session.get([STORAGE_KEY, OPEN_STATE_KEY], (result) => {
+    chrome.storage.local.get([STORAGE_KEY, OPEN_STATE_KEY], (result) => {
       const stored  = result[STORAGE_KEY];
       const wasOpen = result[OPEN_STATE_KEY] === true;
 
       if (stored && stored.length > 0) {
         conversationHistory = stored;
 
-        // Replay messages into the DOM
-        messagesContainer.innerHTML = '';
+        // Replay stored messages
         stored.forEach(turn => {
           if (turn.role === 'user') {
             addMessage('user', turn.content, false);
@@ -195,9 +208,7 @@ function createChatbotOverlay() {
         indicator.textContent = '↑ Previous conversation';
         messagesContainer.appendChild(indicator);
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
-
-      } else {
-        // No stored history — show welcome message
+      } else if (!getCurrentSlug()) {
         addMessage('bot', "Kia ora! I'm Tui, your Spark assistant. Ask me about phones, plans, or accessories! 📱", false);
       }
 
@@ -213,7 +224,12 @@ function createChatbotOverlay() {
 
   // --- Spark product page URL detection ---
   const SPARK_PRODUCT_PATTERN = /spark\.co\.nz\/online\/shop\/products\/([^/?#]+)/;
-  const currentSlug = (window.location.href.match(SPARK_PRODUCT_PATTERN) || [])[1] || null;
+  const getCurrentSlug = () => (window.location.href.match(SPARK_PRODUCT_PATTERN) || [])[1] || null;
+
+  // Lookup control flags (edge case decisions — see lookup-trigger-edge-cases.md)
+  const greetedSlugs = new Set(); // tracks which slugs have been greeted this session
+  let lookupInFlight   = false;   // Scenario 7: abort if user types first
+  let lookupController = null;    // Scenario 7: AbortController for in-flight fetch
 
   // --- Toggle open/close ---
   function openOverlay() {
@@ -222,10 +238,13 @@ function createChatbotOverlay() {
     input.focus();
     saveOpenState(true);
 
-    // Proactive product greeting — only if no existing history
-    if (currentSlug && conversationHistory.length === 0) {
-      setTimeout(() => triggerProductLookup(), 2000);
-    }
+    // Scroll to bottom now that the container is visible and has real dimensions
+    // Messages added during restoreSession() while hidden may not have scrolled correctly
+    requestAnimationFrame(() => {
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    });
+
+    maybeTriggerLookup();
   }
 
   function closeOverlay() {
@@ -240,23 +259,61 @@ function createChatbotOverlay() {
   });
   minimiseBtn.addEventListener('click', closeOverlay);
 
+  // Fire lookup if overlay is open, on a product page, and slug not yet greeted
+  function maybeTriggerLookup() {
+    const slug = getCurrentSlug();
+    if (slug && !greetedSlugs.has(slug) && !overlay.classList.contains('is-hidden')) {
+      setTimeout(() => triggerProductLookup(), 1);
+    }
+  }
+
+  // SPA navigation monitoring — intercept pushState/replaceState and popstate
+  // so lookup fires when the user navigates to a product page without a full reload
+  window.addEventListener('popstate', maybeTriggerLookup);
+  const titleEl = document.querySelector('title');
+  if (titleEl) {
+    new MutationObserver(() => maybeTriggerLookup()).observe(titleEl, { childList: true });
+  }
+
+  resetBtn.addEventListener('click', () => {
+    if (lookupInFlight && lookupController) lookupController.abort();
+    clearHistory();
+    greetedSlugs.clear();
+    lookupInFlight   = false;
+    lookupController = null;
+    messagesContainer.innerHTML = '';
+    const slug = getCurrentSlug();
+    if (!slug) {
+      addMessage('bot', "Kia ora! I'm Tui, your Spark assistant. Ask me about phones, plans, or accessories! 📱", false);
+    }
+    maybeTriggerLookup();
+  });
+
   // --- Proactive product page lookup ---
   async function triggerProductLookup() {
-    if (conversationHistory.length > 0) return;
+    const slug = getCurrentSlug();
+    if (!slug || greetedSlugs.has(slug)) return;
+    greetedSlugs.add(slug);  // mark before fetch — prevents double-fire on slow networks
+
+    // Scenario 7: mark in-flight so sendQuery() can abort us
+    lookupInFlight   = true;
+    lookupController = new AbortController();
 
     showTypingIndicator();
     try {
-      const response = await fetch('http://localhost:5000/lookup', {
+      const response = await fetch(`${API_BASE}/lookup`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: window.location.href })
+        body: JSON.stringify({ url: window.location.href }),
+        signal: lookupController.signal   // Scenario 7: abortable
       });
 
       const data = await response.json();
       removeTypingIndicator();
+      lookupInFlight = false;
 
       if (data.matched) {
-        messagesContainer.innerHTML = '';
+        // Scenarios 1 + 6: always append — never wipe existing conversation
         addMessage('bot', data.response, true);
         conversationHistory.push({ role: 'assistant', content: data.response });
         saveHistory();
@@ -272,15 +329,23 @@ function createChatbotOverlay() {
           addMessage('bot', '🛡️ **Device Protect** insurance is available for this device — covers accidental damage, theft, and more.', true);
         }
 
+        if (data.probe && data.probe.question) {
+          addProbe(data.probe);
+        }
         if (data.suggestions && data.suggestions.length > 0) {
           addSuggestionsSection(data.suggestions);
         }
-      } else {
-        removeTypingIndicator();
       }
+      // Scenario 4 + 5: not matched or server down — welcome message stays, no action
     } catch (error) {
-      console.error('Lookup error:', error);
+      if (error.name === 'AbortError') {
+        // Scenario 7: aborted cleanly by sendQuery() — not an error
+        console.log('Lookup aborted — user typed first');
+      } else {
+        console.error('Lookup error:', error);  // Scenario 4: server down
+      }
       removeTypingIndicator();
+      lookupInFlight = false;
     }
   }
 
@@ -293,32 +358,43 @@ function createChatbotOverlay() {
   // ---------------------------------------------------------------------------
   // Send / receive
   // ---------------------------------------------------------------------------
+  function submitMessage(message, clickSource = null, probeCategory = null) {
+    addMessage('user', message, false);
+    showTypingIndicator();
+    conversationHistory.push({ role: 'user', content: message });
+    saveHistory();
+    sendQuery(message, clickSource, probeCategory);
+  }
+
   function handleSend() {
     const message = input.value.trim();
     if (!message) return;
-
-    addMessage('user', message, false);
     input.value = '';
-    showTypingIndicator();
-
-    conversationHistory.push({ role: 'user', content: message });
-    saveHistory();
-
-    sendQuery(message);
+    submitMessage(message);
   }
 
   sendButton.addEventListener('click', handleSend);
   input.addEventListener('keypress', (e) => { if (e.key === 'Enter') handleSend(); });
 
-  async function sendQuery(message) {
+  async function sendQuery(message, clickSource = null, probeCategory = null) {
+    // Scenario 7: if lookup is still in flight, abort it cleanly before querying
+    if (lookupInFlight && lookupController) {
+      lookupController.abort();
+    }
+
     try {
-      const response = await fetch('http://localhost:5000/query', {
+      const response = await fetch(`${API_BASE}/query`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-Id': sessionId
+        },
         body: JSON.stringify({
           text:    message,
           website: window.location.hostname,
-          history: conversationHistory.slice(0, -1)
+          history: conversationHistory.slice(0, -1),
+          ...(clickSource   && { click_source:   clickSource }),
+          ...(probeCategory && { probe_category: probeCategory })
         }),
       });
 
@@ -332,6 +408,12 @@ function createChatbotOverlay() {
         saveHistory();
       }
 
+      // Store query_id for click attribution on product cards
+      if (data.query_id) {
+        lastQueryId   = data.query_id;
+        lastUserQuery = message;
+      }
+
       processResponse(
         data.response,
         data.products      || [],
@@ -341,6 +423,10 @@ function createChatbotOverlay() {
         data.probe         || null,
         data.debugBar      || null
       );
+
+      if (data.show_cart) {
+        addCartSummary(data.cart_product || null);
+      }
 
     } catch (error) {
       console.error('Error:', error);
@@ -497,6 +583,23 @@ function createChatbotOverlay() {
 
     card.querySelector('.btn-details').addEventListener('click', () => {
       const url = product.url || product.source_url;
+
+      // Report click for search analytics (CTR, MRR, position distribution)
+      if (lastQueryId) {
+        const isFirst = !clickedQueryIds.has(lastQueryId);
+        if (isFirst) clickedQueryIds.add(lastQueryId);
+        fetch(`${API_BASE}/click`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            object_id:  url || product.product_name,
+            position:   index + 1,
+            query_id:   lastQueryId,
+            user_query: lastUserQuery
+          })
+        }).catch(() => {}); // fire-and-forget — never block the UI
+      }
+
       if (url) window.open(url, '_blank');
     });
 
@@ -542,12 +645,71 @@ function createChatbotOverlay() {
     const el = document.createElement('div');
     el.className = 'message bot';
     el.innerHTML = `
-      <div class="followup-question">
+      <div class="followup-question" style="cursor:pointer">
         <span class="followup-icon">💬</span>
         <span class="followup-text">${sanitizeText(question)}</span>
       </div>
     `;
+    el.querySelector('.followup-question').addEventListener('click', () => {
+      submitMessage(question, 'followup');
+    });
     messagesContainer.appendChild(el);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cart summary — shown when customer signals purchase intent
+  // ---------------------------------------------------------------------------
+  function addCartSummary(product) {
+    const el = document.createElement('div');
+    el.className = 'message bot';
+
+    if (product) {
+      const name    = product.product_name || 'Selected product';
+      const color   = product.color   ? ` · ${product.color}`   : '';
+      const storage = product.storage ? ` · ${product.storage}` : '';
+      const upfront = product.pricing?.upfront     ? `$${formatPrice(product.pricing.upfront)} upfront` : null;
+      const monthly = product.pricing?.min_monthly ? `or $${formatPrice(product.pricing.min_monthly)}/mo` : null;
+      const priceStr = [upfront, monthly].filter(Boolean).join('  ');
+      const url = product.url || product.source_url;
+
+      el.innerHTML = `
+        <div class="cart-summary">
+          <div class="cart-summary-tick">✓</div>
+          <div class="cart-summary-body">
+            <div class="cart-summary-label">Great choice!</div>
+            <div class="cart-summary-name">${sanitizeText(name)}${sanitizeText(color)}${sanitizeText(storage)}</div>
+            ${priceStr ? `<div class="cart-summary-price">${sanitizeText(priceStr)}</div>` : ''}
+          </div>
+          <div class="cart-summary-actions">
+            <button class="cart-btn-add"${url ? ` data-url="${sanitizeText(url)}"` : ''}>Add to Cart</button>
+            <span class="cart-browse-link">or keep browsing</span>
+          </div>
+        </div>
+      `;
+      if (url) {
+        el.querySelector('.cart-btn-add').addEventListener('click', () => window.open(url, '_blank'));
+      }
+      el.querySelector('.cart-browse-link').addEventListener('click', () => input.focus());
+    } else {
+      el.innerHTML = `
+        <div class="cart-summary">
+          <div class="cart-summary-tick">✓</div>
+          <div class="cart-summary-body">
+            <div class="cart-summary-label">Ready to order?</div>
+            <div class="cart-summary-name">Visit spark.co.nz or call 0800 800 123</div>
+          </div>
+          <div class="cart-summary-actions">
+            <button class="cart-btn-add" data-url="https://www.spark.co.nz">Complete Order</button>
+            <span class="cart-browse-link">or keep browsing</span>
+          </div>
+        </div>
+      `;
+      el.querySelector('.cart-btn-add').addEventListener('click', () => window.open('https://www.spark.co.nz', '_blank'));
+      el.querySelector('.cart-browse-link').addEventListener('click', () => input.focus());
+    }
+
+    messagesContainer.appendChild(el);
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
 
   // ---------------------------------------------------------------------------
@@ -578,8 +740,7 @@ function createChatbotOverlay() {
     // Wire up pill clicks
     el.querySelectorAll('.probe-pill').forEach(pill => {
       pill.addEventListener('click', () => {
-        input.value = pill.dataset.query;
-        handleSend();
+        submitMessage(pill.dataset.query, 'probe', probe.category);
       });
     });
 
@@ -602,7 +763,7 @@ function createChatbotOverlay() {
       pill.className = 'suggestion-pill';
       pill.textContent = s;
       pill.style.animationDelay = `${i * 0.1}s`;
-      pill.addEventListener('click', () => { input.value = s; handleSend(); });
+      pill.addEventListener('click', () => submitMessage(s, 'suggestion'));
       grid.appendChild(pill);
     });
     container.appendChild(title);

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "RAG Chatbot Overlay",
-  "version": "1.3.2",
+  "version": "1.3.4",
   "description": "Adds a RAG chatbot overlay with markdown support and references to Spark websites",
   "permissions": [
     "storage"
